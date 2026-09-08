@@ -112,7 +112,7 @@ async def get_incident(incident_id: str):
 async def get_events():
     events = []
     for inc in MOCK_INCIDENTS:
-        events.extend(inc["correlated_events"])
+        events.extend(inc.get("correlated_events") or [])
     return events
 
 

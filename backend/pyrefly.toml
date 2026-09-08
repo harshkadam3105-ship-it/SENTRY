@@ -1,0 +1,9 @@
+# Pyrefly config for SentinelX backend stub
+# Suppress virtual/in-memory analysis noise
+
+[python]
+python_version = "3.11"
+
+[project]
+includes = ["main.py"]
+excludes = ["__pycache__", "*.pyc"]
