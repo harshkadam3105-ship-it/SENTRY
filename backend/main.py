@@ -1,5 +1,7 @@
 import sys
 import os
+import random
+from collections import deque
 from datetime import datetime
 from uuid import uuid4
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException
@@ -7,8 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-# Ensure current directory is in Python path for submodule resolution
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add backend/ dir so local submodules resolve (db, core, etc.)
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _BACKEND_DIR)
+
+# Add SENTRY root so teammate absolute imports (from backend.xxx) resolve
+_SENTRY_ROOT = os.path.dirname(_BACKEND_DIR)
+if _SENTRY_ROOT not in sys.path:
+    sys.path.insert(0, _SENTRY_ROOT)
 
 from db.schema import EventIn, HostActionRequest
 from db.db_models import Base, Event, Incident, Asset
@@ -16,11 +24,85 @@ from db.database import engine, get_db
 from core.websocket_manager import manager
 from core.response_action import isolate_host, restore_host
 
+# ── Ayaan: Detection Engine ──────────────────────────────────────────────────
+try:
+    from backend.detection.detector import DetectionEngine
+    _detection_engine = DetectionEngine()
+    _DETECTION_OK = True
+    print("[Sentry] DetectionEngine loaded ✓")
+except Exception as _e:
+    _detection_engine = None
+    _DETECTION_OK = False
+    print(f"[Sentry] DetectionEngine unavailable: {_e}")
+
+# ── Harsh: Correlation + Risk + Incident engines ─────────────────────────────
+try:
+    from backend.correlation.engine import CorrelationEngine
+    from backend.models.schema import EventIn as CorrelationEventIn
+    from backend.risks.scorer import RiskScorer
+    from backend.incidents.generator import IncidentGenerator
+    _correlation_engine = CorrelationEngine()
+    _risk_scorer = RiskScorer()
+    _incident_generator = IncidentGenerator()
+    _PIPELINE_OK = True
+    print("[Sentry] Correlation + Risk + Incident engines loaded ✓")
+except Exception as _e:
+    _correlation_engine = None
+    _risk_scorer = None
+    _incident_generator = None
+    _PIPELINE_OK = False
+    print(f"[Sentry] Correlation pipeline unavailable: {_e}")
+
+# ── Sliding event window for correlation (last 100 events in memory) ──────────
+_EVENT_WINDOW: deque = deque(maxlen=100)
+
 # Create database tables
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
     print("[Sentry] Database table creation note:", e)
+
+# ── Train AnomalyDetector with synthetic baseline on startup ─────────────────
+def _build_baseline_events(n: int = 50) -> list:
+    """Generate synthetic normal-behaviour events to seed the Isolation Forest."""
+    rng = random.Random(42)
+    events = []
+    for _ in range(n):
+        events.append({
+            "features": {
+                "packet_count":          rng.uniform(10, 200),
+                "bytes":                 rng.uniform(500, 50_000),
+                "bytes_per_second":      rng.uniform(50, 5_000),
+                "connection_rate":       rng.uniform(1, 10),
+                "unique_destinations":   rng.uniform(1, 5),
+                "dst_port":              rng.choice([80, 443, 22, 3389]),
+                "process_frequency":     rng.uniform(1, 20),
+                "new_process":           0,
+                "parent_process_change": 0,
+                "privilege_change":      0,
+                "file_change_rate":      rng.uniform(0, 5),
+                "requests_per_minute":   rng.uniform(10, 100),
+                "error_rate":            rng.uniform(0, 0.05),
+                "auth_failure_rate":     rng.uniform(0, 0.05),
+                "sensitive_endpoint_access": 0,
+                "unique_endpoint_count": rng.uniform(1, 10),
+                "failed_login_count":    rng.uniform(0, 2),
+                "success_count":         rng.uniform(1, 5),
+                "failure_ratio":         rng.uniform(0, 0.1),
+                "login_rate":            rng.uniform(0.1, 2),
+                "source_ip_change":      0,
+            }
+        })
+    return events
+
+if _DETECTION_OK:
+    try:
+        _baseline = _build_baseline_events(50)
+        _detection_engine.train(_baseline)
+        print("[Sentry] AnomalyDetector trained on 50 synthetic baseline events ✓")
+    except Exception as _train_err:
+        print(f"[Sentry] AnomalyDetector training failed (rule-based only): {_train_err}")
+        _DETECTION_OK = False
 
 app = FastAPI(title="Sentry Backend")
 
@@ -255,6 +337,7 @@ def health():
 
 @app.post("/events")
 async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
+    # ── 1. Persist to DB ─────────────────────────────────────────────────────
     try:
         db_event = Event(
             id=event.event_id,
@@ -278,14 +361,100 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
     except Exception as e:
         print("[Sentry] DB event insert notice:", e)
 
-    # Broadcast event straight to connected dashboards in real time
+    # Serialize for broadcast + pipeline
     try:
-        data = event.model_dump(mode="json")
+        event_data = event.model_dump(mode="json")
     except AttributeError:
-        data = event.dict()
-    await manager.broadcast({"type": "event", "data": data})
+        event_data = event.dict()
 
-    return {"status": "ok", "event_id": str(event.event_id)}
+    # ── 2. Detection pipeline (Ayaan + Harsh) ────────────────────────────────
+    detection_result = None
+    risk_score_raw = 0.0
+    anomaly_score = 0.0
+    rule_score = 0.0
+    correlation_score = 0.0
+
+    if _DETECTION_OK:
+        try:
+            detection_result = _detection_engine.detect(event_data)
+            anomaly_score = detection_result.get("anomaly_score", 0.0)
+            rule_score = detection_result.get("rule_score", 0.0)
+        except Exception as _det_err:
+            print(f"[Sentry] Detection error: {_det_err}")
+
+    # ── 3. Correlation (Harsh) ───────────────────────────────────────────────
+    if _PIPELINE_OK and len(_EVENT_WINDOW) > 0:
+        try:
+            # Build lightweight EventIn-compatible objects from window for correlation
+            prev_events = list(_EVENT_WINDOW)
+            correlation_score = _correlation_engine.correlation_score(
+                event, prev_events
+            )
+        except Exception as _corr_err:
+            print(f"[Sentry] Correlation error: {_corr_err}")
+
+    # ── 4. Risk Score (Harsh) ────────────────────────────────────────────────
+    if _PIPELINE_OK:
+        try:
+            risk_score_raw = _risk_scorer.score(
+                anomaly_score=anomaly_score,
+                rule_score=rule_score,
+                severity=event.severity,
+                correlation_score=correlation_score,
+            )
+        except Exception as _risk_err:
+            print(f"[Sentry] Risk scoring error: {_risk_err}")
+
+    # ── 5. Add event to sliding window for future correlation ─────────────────
+    _EVENT_WINDOW.append(event)
+
+    # ── 6. Generate + broadcast incident if risk is significant ───────────────
+    if _PIPELINE_OK and detection_result and risk_score_raw >= 40:
+        try:
+            incident_dict = _incident_generator.generate(
+                events=[event_data],
+                detection_results=[detection_result],
+                risk_score=risk_score_raw,
+            )
+            # Enrich with readable fields for frontend
+            incident_dict["risk_score"] = round(risk_score_raw / 100, 2)
+            incident_dict["anomaly_score"] = round(anomaly_score, 2)
+            incident_dict["rule_score"] = round(rule_score, 2)
+            incident_dict["correlation_score"] = round(correlation_score, 2)
+            incident_dict["host"] = event.host_id
+            incident_dict["user"] = event.user_id
+            incident_dict["created_at"] = event.timestamp.isoformat()
+            incident_dict["correlated_events"] = [{
+                "event_id": str(event.event_id),
+                "type": event.event_type,
+                "timestamp": event.timestamp.isoformat(),
+                "anomaly_score": round(anomaly_score / 100, 2),
+                "rule_score": round(rule_score / 100, 2),
+                "detail": event.raw_data.get("log", event.event_type),
+            }]
+            await manager.broadcast({"type": "incident", "data": incident_dict})
+            print(f"[Sentry] Incident generated: risk={risk_score_raw:.1f} "
+                  f"anomaly={anomaly_score:.1f} rule={rule_score:.1f} "
+                  f"correlation={correlation_score:.2f} "
+                  f"tags={detection_result.get('rule_tags', [])}")
+        except Exception as _inc_err:
+            print(f"[Sentry] Incident generation error: {_inc_err}")
+
+    # ── 7. Always broadcast the raw event to live feed ───────────────────────
+    event_data["anomaly_score"] = round(anomaly_score, 2)
+    event_data["rule_score"] = round(rule_score, 2)
+    event_data["risk_score"] = round(risk_score_raw / 100, 2)
+    await manager.broadcast({"type": "event", "data": event_data})
+
+    return {
+        "status": "ok",
+        "event_id": str(event.event_id),
+        "anomaly_score": round(anomaly_score, 2),
+        "rule_score": round(rule_score, 2),
+        "risk_score": round(risk_score_raw, 2),
+        "correlation_score": round(correlation_score, 2),
+        "incident_generated": _PIPELINE_OK and detection_result is not None and risk_score_raw >= 40,
+    }
 
 
 @app.get("/events")
