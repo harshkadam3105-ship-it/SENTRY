@@ -63,3 +63,25 @@ def test_detection_engine_brute_force():
     assert result["rule_score"] == 90
     assert "Brute Force" in result["rule_tags"]
     assert result["detected"] is True
+
+def test_detection_engine_multi_signal_event():
+    engine = DetectionEngine()
+    engine.train(make_baseline_events())
+
+    event = make_baseline_events()[0]
+    event["event_id"] = "multi-signal-attack"
+    event["features"].update({
+        "failed_login_count": 10,
+        "new_process": 1,
+        "connection_rate": 25
+    })
+
+    result = engine.detect(event)
+
+    assert result["detected"] is True
+    assert result["rule_score"] == 90
+    assert "Brute Force" in result["rule_tags"]
+    assert "Suspicious Process" in result["rule_tags"]
+    assert "Unusual Outbound Activity" in result["rule_tags"]
+    assert result["anomaly_score"] >= 0
+    assert result["anomaly_score"] <= 100
