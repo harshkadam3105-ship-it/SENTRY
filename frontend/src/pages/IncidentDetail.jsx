@@ -4,7 +4,7 @@ import SeverityBadge from '../components/SeverityBadge'
 import RiskScoreBreakdown from '../components/RiskScoreBreakdown'
 import EvidenceTimeline from '../components/EvidenceTimeline'
 import RemediationConsole from '../components/RemediationConsole'
-import { getIncidentById, isolateHost } from '../api/incidents'
+import { getIncidentById, isolateHost, downloadIncidentDossier } from '../api/incidents'
 
 /**
  * IncidentDetail — deep-dive view for a single incident
@@ -57,6 +57,7 @@ export default function IncidentDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [isolateState, setIsolateState] = useState('idle') // idle | loading | done | error
+  const [exportState, setExportState] = useState('idle') // idle | exporting | success | error
 
   useEffect(() => {
     getIncidentById(id)
@@ -82,13 +83,17 @@ export default function IncidentDetail() {
   }
 
   function handleExportDossier() {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(incident, null, 2))
-    const downloadAnchor = document.createElement('a')
-    downloadAnchor.setAttribute("href", dataStr)
-    downloadAnchor.setAttribute("download", `Sentry_Incident_${incident.incident_id}_Dossier.json`)
-    document.body.appendChild(downloadAnchor)
-    downloadAnchor.click()
-    downloadAnchor.remove()
+    if (!incident || exportState === 'exporting') return
+    setExportState('exporting')
+    try {
+      downloadIncidentDossier(incident)
+      setExportState('success')
+      setTimeout(() => setExportState('idle'), 3000)
+    } catch (err) {
+      console.error('[Sentry] Failed to export incident dossier:', err)
+      setExportState('error')
+      setTimeout(() => setExportState('idle'), 3500)
+    }
   }
 
   if (loading) {
@@ -180,18 +185,51 @@ export default function IncidentDetail() {
             </div>
 
             {/* Risk score + Quick Actions */}
-            <div className="flex items-center gap-6 lg:flex-col lg:items-end">
-              <div className="text-center">
+            <div className="flex items-center gap-6 lg:flex-col lg:items-end lg:justify-between">
+              <div className="text-center lg:text-right">
                 <div className="text-xs text-slate-500 mb-1">Risk Score</div>
                 <div className={`text-5xl font-bold font-mono ${riskColor}`}>{riskPct}</div>
                 <div className="text-xs text-slate-600">/100</div>
               </div>
 
               <button
+                id="export-dossier-btn"
                 onClick={handleExportDossier}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-surface-700/60 hover:bg-surface-700 hover:text-white border border-white/10 transition-colors flex items-center gap-1.5 shadow-sm"
+                disabled={exportState === 'exporting'}
+                title="Download comprehensive forensic JSON dossier"
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
+                  exportState === 'success'
+                    ? 'bg-emerald-950/70 border border-emerald-500/60 text-emerald-300 shadow-emerald-500/20 ring-1 ring-emerald-500/40'
+                    : exportState === 'error'
+                    ? 'bg-red-950/70 border border-red-500/60 text-red-300'
+                    : 'bg-surface-700/80 hover:bg-surface-700 text-slate-200 hover:text-white border border-white/10 hover:border-cyan-500/50 hover:shadow-cyan-500/10 active:scale-95'
+                }`}
               >
-                <span>📥</span> Export Dossier (JSON)
+                {exportState === 'exporting' ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                    <span>Exporting Dossier…</span>
+                  </>
+                ) : exportState === 'success' ? (
+                  <>
+                    <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="font-semibold text-emerald-300">Dossier Exported (.json)</span>
+                  </>
+                ) : exportState === 'error' ? (
+                  <>
+                    <span className="text-red-400 font-bold">✕</span>
+                    <span>Export Failed</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>Export Dossier (JSON)</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
