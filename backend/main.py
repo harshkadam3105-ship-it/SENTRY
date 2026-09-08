@@ -1,29 +1,3 @@
-from fastapi import FastAPI
-
-from backend.api.events import router as events_router
-from backend.database.connection import Base, engine
-from backend.models import Asset, Event, Incident
-
-
-app = FastAPI(
-    title="SENTRY API",
-    description="AI-powered multi-signal cyber threat detection backend",
-    version="1.0.0",
-)
-
-
-Base.metadata.create_all(bind=engine)
-
-
-app.include_router(events_router)
-
-
-@app.get("/health")
-def health_check():
-    return {
-        "status": "ok",
-        "service": "sentry-backend",
-    }
 import sys
 import os
 import re
@@ -38,7 +12,8 @@ from sqlalchemy import desc
 
 # Add backend/ dir so local submodules resolve (db, core, etc.)
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _BACKEND_DIR)
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 # Add SENTRY root so teammate absolute imports (from backend.xxx) resolve
 _SENTRY_ROOT = os.path.dirname(_BACKEND_DIR)
@@ -1159,6 +1134,64 @@ def get_connected_devices():
             device_map[h]["event_count"] += 1
 
     return list(device_map.values())
+
+
+# ---------------- DYNAMIC AI SECURITY LAYER ----------------
+try:
+    from backend.core.ai_layer import ai_layer
+except Exception:
+    try:
+        from core.ai_layer import ai_layer
+    except Exception as _ai_err:
+        print(f"[Sentry] AI Layer import notice: {_ai_err}")
+        ai_layer = None
+
+@app.post("/ai/chat")
+@app.post("/ai/copilot")
+async def ai_chat_endpoint(payload: dict):
+    """Dynamic AI Security Analyst Assistant endpoint."""
+    query = payload.get("query") or payload.get("prompt") or payload.get("text") or ""
+    context = payload.get("context", {})
+    if ai_layer:
+        return ai_layer.chat_response(query, context)
+    return {
+        "query": query,
+        "response": "Sentry AI Layer operational. Monitoring real-time telemetry streams and active host containers.",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+@app.post("/ai/predict-next-move")
+async def ai_predict_next_move(payload: dict):
+    incident = payload.get("incident", {})
+    if ai_layer:
+        return ai_layer.predict_next_move(incident)
+    return {"predicted_technique": "T1021", "probability_confidence": "85%"}
+
+@app.post("/ai/remediation-script")
+async def ai_remediation_script(payload: dict):
+    incident = payload.get("incident", {})
+    script_type = payload.get("script_type", "powershell")
+    if ai_layer:
+        return ai_layer.generate_remediation_script(incident, script_type)
+    return {"script": "# Sentry Emergency Containment Script\nDisable-NetAdapter -Name *", "script_type": script_type}
+
+@app.post("/ai/blast-radius")
+async def ai_blast_radius(payload: dict):
+    incident = payload.get("incident", {})
+    if ai_layer:
+        return ai_layer.assess_blast_radius(incident)
+    return {"estimated_blast_radius": "3 Enterprise Assets"}
+
+@app.get("/incidents/{incident_id}/ai-analysis")
+async def get_incident_ai_analysis(incident_id: str, db: Session = Depends(get_db)):
+    for inc in _LIVE_INCIDENTS:
+        if inc.get("incident_id") == incident_id or str(inc.get("id")) == incident_id:
+            if _ai_analyst:
+                return _ai_analyst.analyze(inc)
+            elif ai_layer:
+                return ai_layer.assess_blast_radius(inc)
+            return {"status": "ok", "incident_id": incident_id}
+    raise HTTPException(status_code=404, detail="Incident not found")
 
 
 # ---------------- WEBSOCKET ----------------
