@@ -567,6 +567,185 @@ async def restore(request: HostActionRequest, db: Session = Depends(get_db)):
     return result
 
 
+@app.post("/actions/revoke-user")
+async def revoke_user_action(payload: dict, db: Session = Depends(get_db)):
+    user_id = payload.get("user") or payload.get("user_id") or "unknown_user"
+    reason = payload.get("reason") or "High anomaly score detected"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "revoked",
+        "action": "user_session_revoked",
+        "user": user_id,
+        "tokens_invalidated": 3,
+        "active_sessions_killed": True,
+        "message": f"Active sessions revoked and account credentials locked for '{user_id}'.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/block-ip")
+async def block_ip_action(payload: dict, db: Session = Depends(get_db)):
+    ip = payload.get("ip") or "198.51.100.44"
+    rule_id = f"FW-DROP-{uuid4().hex[:6].upper()}"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "blocked",
+        "action": "firewall_rule_applied",
+        "ip": ip,
+        "rule_id": rule_id,
+        "direction": "inbound_and_outbound",
+        "message": f"IP address {ip} added to perimeter firewall drop list via rule {rule_id}.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/capture-forensics")
+async def capture_forensics_action(payload: dict, db: Session = Depends(get_db)):
+    host = payload.get("host") or payload.get("container_name") or "workstation-14.corp"
+    snapshot_id = f"MEM-DUMP-{uuid4().hex[:6].upper()}"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "captured",
+        "action": "forensics_snapshot",
+        "host": host,
+        "snapshot_id": snapshot_id,
+        "size_mb": 512,
+        "artifacts": ["process_tree.json", "active_sockets.pcap", "volatile_memory.raw"],
+        "message": f"Forensics memory triage dump captured for {host} (ID: {snapshot_id}).",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/trigger-playbook")
+async def trigger_playbook_action(payload: dict, db: Session = Depends(get_db)):
+    playbook = payload.get("playbook") or "Ransomware Automated Containment"
+    incident_id = payload.get("incident_id") or "INC-001"
+    host = payload.get("host") or "workstation-14.corp"
+    user_id = payload.get("user") or "alice.chen"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    steps = [
+        {"step": 1, "name": "Host Network Quarantine", "status": "completed"},
+        {"step": 2, "name": "Active User Session Termination", "status": "completed"},
+        {"step": 3, "name": "Perimeter IP Block Rules Deployed", "status": "completed"},
+        {"step": 4, "name": "Volatile Memory Triage Dump Captured", "status": "completed"},
+    ]
+    result = {
+        "status": "executed",
+        "action": "automated_playbook_executed",
+        "playbook": playbook,
+        "incident_id": incident_id,
+        "host": host,
+        "user": user_id,
+        "steps": steps,
+        "execution_time_seconds": 1.2,
+        "message": f"SOAR Playbook '{playbook}' successfully executed for incident {incident_id}.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.patch("/incidents/{incident_id}/status")
+async def update_incident_status(incident_id: str, payload: dict, db: Session = Depends(get_db)):
+    new_status = payload.get("status", "open").lower()
+    # Update in memory seed list
+    found = False
+    for inc in SEED_INCIDENTS:
+        if inc.get("incident_id") == incident_id or inc.get("id") == incident_id:
+            inc["status"] = new_status
+            found = True
+            break
+    # Update in database if present
+    try:
+        db_inc = db.query(Incident).filter(
+            (Incident.id == incident_id) | (Incident.title.contains(incident_id))
+        ).first()
+        if db_inc:
+            db_inc.status = new_status
+            db.commit()
+            found = True
+    except Exception:
+        pass
+
+    response_data = {"incident_id": incident_id, "status": new_status, "updated_at": datetime.utcnow().isoformat() + "Z"}
+    await manager.broadcast({"type": "status_update", "data": response_data})
+    return response_data
+
+
+# ---------------- ANALYTICS (UEBA & METRICS) ----------------
+
+@app.get("/analytics/risky-users")
+def get_risky_users():
+    return [
+        {
+            "user": "eve.patel",
+            "department": "Finance Admin",
+            "host": "laptop-mgmt-05.corp",
+            "risk_score": 97,
+            "anomalies_count": 8,
+            "severity": "critical",
+            "trend": [45, 62, 74, 88, 97],
+            "last_active": "5m ago",
+        },
+        {
+            "user": "alice.chen",
+            "department": "DevOps Engineering",
+            "host": "workstation-14.corp",
+            "risk_score": 94,
+            "anomalies_count": 6,
+            "severity": "critical",
+            "trend": [20, 42, 60, 81, 94],
+            "last_active": "14m ago",
+        },
+        {
+            "user": "svc_account",
+            "department": "Cloud Service Principal",
+            "host": "server-api-01.corp",
+            "risk_score": 82,
+            "anomalies_count": 5,
+            "severity": "high",
+            "trend": [15, 30, 50, 68, 82],
+            "last_active": "22m ago",
+        },
+        {
+            "user": "svc_backup",
+            "department": "Storage Infrastructure",
+            "host": "srv-finance-02",
+            "risk_score": 78,
+            "anomalies_count": 4,
+            "severity": "high",
+            "trend": [30, 48, 55, 67, 78],
+            "last_active": "40m ago",
+        },
+        {
+            "user": "bob.miller",
+            "department": "Core Platform",
+            "host": "dev-box-03",
+            "risk_score": 55,
+            "anomalies_count": 3,
+            "severity": "medium",
+            "trend": [25, 35, 42, 49, 55],
+            "last_active": "1h ago",
+        },
+        {
+            "user": "frank.wu",
+            "department": "Corporate Operations",
+            "host": "server-file-03.corp",
+            "risk_score": 44,
+            "anomalies_count": 2,
+            "severity": "medium",
+            "trend": [12, 18, 28, 38, 44],
+            "last_active": "2h ago",
+        },
+    ]
+
+
 # ---------------- WEBSOCKET ----------------
 
 @app.websocket("/ws")
