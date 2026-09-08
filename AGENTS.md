@@ -1,219 +1,236 @@
 # AGENTS.md — Sentry (PS19) · Rohan's Track
 
 > This file is the authoritative context document for any AI agent (or human) picking up work on this repo.
-> It covers everything built in Session 1 (2026-09-08), current state, known issues, and next steps.
+> It covers the core platform architecture, pipeline integrations, and a detailed reference of all new frontend features and components built for the enterprise SOC dashboard.
 
 ---
 
-## Project Overview
+## Platform Overview
 
-**Sentry** is a real-time cybersecurity threat detection and SOC (Security Operations Center) dashboard.
+**Sentry** is a real-time cybersecurity Threat Detection, Incident Correlation, and SOAR (Security Orchestration, Automation, and Response) platform.
 
 | Attribute | Value |
 |---|---|
-| Stack | React 18 + Vite 8 + Tailwind CSS 3, native WebSocket |
-| Backend (stub) | FastAPI + Uvicorn (Python 3.11) |
-| Database | PostgreSQL 15 (via Docker) |
-| Orchestration | Docker Compose (4 services) |
-| Active branch | `rohan/frontend` |
-| Remote | https://github.com/harshkadam3105-ship-it/SENTRY |
+| Frontend Stack | React 18 + Vite 8 + Tailwind CSS 3, native WebSocket |
+| Backend Engine | FastAPI + Uvicorn (Python 3.11) + SQLAlchemy |
+| Correlation Engine | 100-event sliding window, multi-stage attack correlation |
+| Detection Engine | Hybrid ML Anomaly Detection (Isolation Forest) + Signature Rules |
+| Database | PostgreSQL 15 (Docker) with SQLite fallback |
+| Active Branch | `main` / `rohan/frontend` |
+| Repository Remote | https://github.com/harshkadam3105-ship-it/SENTRY |
 
 ---
 
-## Branch Rules
+## High-Level Architecture & Pipeline Flow
 
-| Branch | Purpose | State |
-|---|---|---|
-| `main` | Team integration — clean base only | `Initial commit` only (LICENSE + README) |
-| `rohan/frontend` | Rohan's working branch | All frontend + backend stub work lives here |
-
-> **IMPORTANT:** `main` was force-reset to strip an accidental merge. Any teammate who pulled that merge must run:
-> ```bash
-> git fetch && git reset --hard origin/main
-> ```
-
----
-
-## What Was Built (Session 1)
-
-### 1. Docker Compose — `docker-compose.yml`
-
-4-service stack on a shared `sentry-net` bridge:
-
-| Service | Image | Port | Notes |
-|---|---|---|---|
-| `frontend` | Node 20 slim | `5173` | Vite dev server, bind `0.0.0.0` |
-| `backend` | Python 3.11 slim | `8000` | FastAPI stub |
-| `db` | Postgres 15 alpine | `5432` | Healthcheck gated |
-| `demo-app` | Python 3.11 slim | — | Attack trigger script |
-
-**Container networking:** all inter-service calls use **service names**, not `localhost`.
-- Frontend reads `VITE_API_URL` (→ `http://backend:8000` in Docker, `http://localhost:8000` local)
-- Frontend reads `VITE_WS_URL` (→ `ws://backend:8000` in Docker)
+```
+   [ Telemetry / Attacks ]
+(Auth, Network, Endpoint, Demo App)
+               │
+               ▼
+     [ Detection Engine ]  ──► Ayaan: Rule Engine + ML Anomaly Detection (Isolation Forest)
+               │
+               ▼
+    [ Correlation Engine ] ──► Harsh: 100-event sliding window correlates multi-stage attacks
+               │
+               ▼
+       [ Risk Scorer ]     ──► Harsh: Weighted scoring (Anomaly + Rules + Correlation)
+               │
+               ▼  (Score ≥ 40)
+    [ Incident Generator ] ──► Harsh: Auto-generates incident with MITRE ATT&CK tags
+               │
+               ▼
+  [ WebSocket / REST API ] ──► Rohan: FastAPI backend broadcasts live streams
+               │
+               ▼
+     [ Frontend Console ]  ──► Rohan: React 18 + Tailwind SIEM dashboard & SOAR playbooks
+```
 
 ---
 
-### 2. Backend Stub — `backend/main.py`
+## Frontend File Tree
 
-Fully working FastAPI stub. Tanmay's team replaces this wholesale — it is **not a placeholder**, it's a working integration target.
-
-**Endpoints:**
-
-| Method | Path | Returns |
-|---|---|---|
-| `GET` | `/health` | `{"status": "ok"}` |
-| `GET` | `/incidents` | Array of 3 seed incidents |
-| `GET` | `/incidents/{id}` | Single incident or `404` |
-| `GET` | `/events` | All correlated events flattened |
-| `GET` | `/assets` | Host list |
-| `POST` | `/ingest` | Accepts attack trigger payload |
-| `POST` | `/actions/isolate-host` | Returns isolation confirmation |
-| `WS` | `/ws/incidents` | Streams incidents; pushes synthetic every 15s |
-
-**Fixed bugs this session:**
-- `return {"error": "not found"}, 404` → `raise HTTPException(status_code=404, ...)` (tuple returns silently 200 in FastAPI)
-- `events.extend(inc["correlated_events"])` → `events.extend(inc.get("correlated_events") or [])` (Pyrefly type error on untyped dict)
-
----
-
-### 3. Frontend App — `frontend/`
-
-**Full file tree:**
 ```
 frontend/
 ├── Dockerfile
-├── vite.config.js          # proxy /api → backend, host 0.0.0.0
-├── tailwind.config.js      # dark SIEM theme, severity colors, animations
-├── index.html              # title: "Sentry | SOC Dashboard"
+├── vite.config.js               # Proxy /api → backend:8000, host 0.0.0.0, PostCSS Tailwind
+├── tailwind.config.js           # Dark SIEM theme, cyber accents, severity color tokens
+├── index.html                   # Title: "Sentry | SOC Dashboard", Google Fonts (Inter, JetBrains Mono)
 └── src/
-    ├── index.css           # glassmorphism, severity badges, MITRE tags, animations
-    ├── main.jsx            # React 18 StrictMode entry
-    ├── App.jsx             # HashRouter — / and /incident/:id
+    ├── index.css                # Glassmorphism, cyber glow filters, severity badges, custom scrollbars
+    ├── main.jsx                 # React 18 StrictMode entry point
+    ├── App.jsx                  # HashRouter: / (Overview) and /incident/:id (Incident Detail)
     ├── api/
-    │   └── incidents.js   ← ⭐ ONE-LINE SWAP (USE_LIVE_API flag)
+    │   └── incidents.js         # REST client, resilient normalization layer & dossier export generator
     ├── ws/
-    │   └── incidentSocket.js  # exponential backoff: 1s→2s→4s→8s→15s→30s
+    │   └── incidentSocket.js   # Native WebSocket client with exponential backoff (1s→2s→4s→8s→15s→30s)
     ├── mocks/
-    │   └── incidents.mock.json  # 7 realistic incidents, spec-exact schema
+    │   └── incidents.mock.json  # Realistic fallback incidents with complete telemetry chains
     ├── components/
-    │   ├── SeverityBadge.jsx     # critical/high/medium/low with pulse on critical
-    │   ├── StatCard.jsx          # glassmorphism stat cards with accent colors
-    │   ├── IncidentTable.jsx     # sorted by severity+risk_score, inline risk bar
-    │   ├── LiveFeedPanel.jsx     # auto-scroll, WS status indicator, event icons
-    │   ├── RiskScoreBreakdown.jsx # 4-component bars: anomaly, rule, severity, correlation
-    │   └── EvidenceTimeline.jsx  # chronological events with icons, anomaly/rule scores
+    │   ├── StatCard.jsx         # Executive metric cards with dynamic colored accents and icons
+    │   ├── SeverityBadge.jsx    # Severity pill badge (critical/high/medium/low) with critical radar pulse
+    │   ├── IncidentTable.jsx    # Sortable incident table with inline risk meter and new incident flash
+    │   ├── LiveFeedPanel.jsx    # Auto-scrolling real-time telemetry feed with event type icons
+    │   ├── SoarMetricsBar.jsx   # ⭐ NEW: Executive SOAR automation ROI strip (MTTD, MTTR, defense rate)
+    │   ├── AttackTrendChart.jsx # ⭐ NEW: 24h threat velocity SVG area graph with dual-metric toggle
+    │   ├── SeverityDonutChart.jsx # ⭐ NEW: Responsive radial SVG donut chart with center threat count
+    │   ├── RiskyUsersPanel.jsx  # ⭐ NEW: UEBA risky identity ranking with SVG sparklines & 1-click revoke
+    │   ├── RemediationConsole.jsx # ⭐ NEW: Multi-tab SOAR playbook engine, immediate actions & audit log
+    │   ├── RiskScoreBreakdown.jsx # 4-component risk decomposition meters (Anomaly, Rule, Severity, Correlation)
+    │   └── EvidenceTimeline.jsx # Chronological attack sequence with MITRE tags and anomaly weights
     └── pages/
-        ├── SOCOverview.jsx       # stat cards + table + live feed, WS connected
-        └── IncidentDetail.jsx    # risk score, MITRE tags, timeline, Isolate Host button
-```
-
-**Design system:**
-- Background: `#070b14` / `#0d1117` / `#111827`
-- Accent: cyan-400 (`#22d3ee`) with glow shadow
-- Severity: critical=red-400, high=orange-400, medium=yellow-400, low=slate-400
-- MITRE tags: indigo bg, linked to `attack.mitre.org`
-- Font: Inter (body) + JetBrains Mono (code/IDs/scores)
-
----
-
-### 4. Demo App — `demo-app/trigger.py`
-
-```bash
-python trigger.py          # fires 3 attack events once
-python trigger.py --loop   # fires every 20s (continuous demo mode)
+        ├── SOCOverview.jsx      # Main dashboard: metrics bar, charts, incident table & tabbed right panel
+        └── IncidentDetail.jsx   # Deep-dive screen: header card, SOAR console, dossier export & evidence
 ```
 
 ---
 
-### 5. Integration Contract — `INTEGRATION_DEPS.md`
+## Detailed Frontend New Features
 
-Full field-by-field contract for Tanmay + correlation-engine teammate. Key points:
-- WS must send **one JSON object per `send()`**, not a batch array
-- `severity` must be **lowercase** (`"critical"` not `"Critical"`)
-- `risk_score` must be **float 0.0–1.0** (not int 94)
-- `correlated_events` must be **array**, send `[]` not `null`
-- Backend must set **CORS headers** or all `fetch()` calls silently fail
+### 1. Attack Velocity & Threat Flow Chart (`AttackTrendChart.jsx`)
+- **Location:** Top analytics row of the **SOC Overview** page.
+- **Visual Design:** Pure responsive SVG area chart using cubic Bézier curves (`d={linePath}`) with smooth gradient glow fills (`#areaGradient`, `#lineGradient`).
+- **Dual-Metric Toggle:**
+  - **Incident Volume:** Displays 24-hour accumulation of correlated security incidents across the enterprise.
+  - **Anomaly Wave:** Visualizes raw telemetry anomaly velocity surges detected by the Isolation Forest.
+- **Real-Time Sub-Metrics Strip:**
+  - Threat Velocity: `+14% / hr`
+  - Sliding Window: `100 Events` (in-memory correlation buffer)
+  - Threat Posture: `High Active` (critical alerts pending)
+
+### 2. Severity Distribution Donut Chart (`SeverityDonutChart.jsx`)
+- **Location:** Adjacent to the Attack Trend Chart on the **SOC Overview** page.
+- **Visual Design:** Animated radial SVG donut chart utilizing calculated `stroke-dasharray` and `stroke-dashoffset` parameters with a centered threat counter.
+- **Categorization:**
+  - 🔴 **Critical** (`#ef4444`) — Immediate containment required.
+  - 🟠 **High** (`#f97316`) — Under active tier-2 review.
+  - 🟡 **Medium** (`#eab308`) — Suspicious anomaly threshold crossed.
+  - ⚪ **Low** (`#64748b`) — Informational / baseline deviation.
+- **Interactive Legend:** Displays count and proportional percentage for each severity bracket with responsive hover states.
+
+### 3. Executive SOAR Performance Bar (`SoarMetricsBar.jsx`)
+- **Location:** Top header strip of the **SOC Overview** page.
+- **Operational KPIs:**
+  - **MTTD (Mean Time to Detect):** `1.2m` (vs 4.5m industry baseline).
+  - **MTTR (Mean Time to Remediate):** `38s` (-88% automated dwell time).
+  - **Automated Defense Rate:** `92.4%` (playbook success rate across containment actions).
+  - **Active Threat Containment:** Live counter of `criticalCount / activeCount`.
+  - **Fleet Protected Assets:** 24 monitored endpoints with zero lateral bridges.
+
+### 4. UEBA Risky Users Panel with Sparklines (`RiskyUsersPanel.jsx`)
+- **Location:** Tabbed right sidebar on **SOC Overview** (`Live Feed` ⟷ `Risky Users (UEBA)`).
+- **Functionality:** Identifies and ranks high-risk employee and service identities (`eve.patel`, `alice.chen`, `svc_account`, `svc_backup`).
+- **SVG Sparklines:** Lightweight polyline charts visualizing each identity's 5-point historical risk score trajectory.
+- **1-Click SOAR Response:** Instant **Revoke Session** button dispatching to `/actions/revoke-user`, immediately updating local state to "Revoked" with visual lock badges.
+
+### 5. Interactive SOAR Remediation Console (`RemediationConsole.jsx`)
+- **Location:** Embedded in the **Incident Detail** screen.
+- **Incident Status Lifecycle:** Interactive status selector (`Open` ➜ `Investigating` ➜ `Contained` ➜ `Resolved`) with backend REST `PATCH /incidents/{id}/status` and real-time WebSocket broadcast to all connected SOC consoles.
+- **Three Operation Tabs:**
+  1. **Immediate Actions:**
+     - 🛡️ *Zero-Trust Host Quarantine* (`POST /actions/isolate-host`)
+     - 👤 *Revoke Active User Session* (`POST /actions/revoke-user`)
+     - 🚫 *Deploy Perimeter C2 Null-Route IP Block* (`POST /actions/block-c2`)
+     - 💾 *Capture Volatile Memory Triage Dump* (`POST /actions/capture-forensics`)
+  2. **Automated Playbooks:**
+     - ⚡ *Rapid Ransomware Containment* (~1.2s, 4-step sequence: isolate host, kill sessions, firewall C2, dump memory).
+     - 🔑 *Credential Abuse Lockout* (~0.8s, 4-step sequence: lock directory account, terminate web sessions, enforce MFA, alert lead).
+     - ↔️ *Lateral Movement Isolation* (~1.5s, 3-step sequence: isolate source endpoint, block SMB/RDP, export event logs).
+     - *Visuals:* Animated execution progression with real-time step badges and execution timers.
+  3. **Remediation Audit Log:**
+     - Filterable chronological audit trail documenting every containment action, target entity, operator, and timestamp.
+
+### 6. Forensic Incident Dossier Export Engine
+- **Files:** [`src/api/incidents.js`](frontend/src/api/incidents.js), [`src/pages/IncidentDetail.jsx`](frontend/src/pages/IncidentDetail.jsx), and [`backend/main.py`](backend/main.py).
+- **Purpose:** Exports a comprehensive, legally defensible, machine-readable JSON forensic dossier for post-incident review (PIR), external forensic hand-off (DFIR), and compliance audits.
+- **Architecture:**
+  - **Memory Blob Generation:** Uses W3C `Blob([json], { type: 'application/json' })` + `URL.createObjectURL` to prevent browser `data:` URI navigation blocking and handle arbitrary payload sizes safely.
+  - **Dual Availability:** Available via client-side one-click download or direct backend REST endpoint (`GET /incidents/{incident_id}/dossier`).
+- **Forensic Schema (`TLP:AMBER+STRICT`):**
+  - `dossier_metadata`: Report ID, classification, digital hash timestamp, platform version.
+  - `incident_overview`: Normalized severity, 0–100 risk score, dwell time, containment SLA status.
+  - `entity_context`: Host platform, IP address, asset tier, EDR agent version, user role, department.
+  - `threat_verdict`: Executive explanation with MITRE ATT&CK technique hyperlinks.
+  - `forensic_evidence_chain`: Chronological correlated events with rule scores and ML anomaly weights.
+  - `soar_audit_trail`: Recommended playbooks and available containment actions.
+- **UI State Machine:**
+  - **Idle:** Glassmorphism action button with SVG download icon.
+  - **Exporting:** Spinner animation with `"Exporting Dossier…"`.
+  - **Success:** Emerald green badge with checkmark (`"✓ Dossier Exported (.json)"`) for 3 seconds.
+  - **Error:** Red alert state with user feedback.
+
+### 7. Resilient Schema Normalization Layer (`src/api/incidents.js`)
+- **Problem Solved:** Prevents frontend crashes caused by teammate schema variance between database models and frontend expectations.
+- **Normalizations Handled:**
+  - Severity: Converts numeric scores (`0-5`) or arbitrary case strings to canonical `'critical' | 'high' | 'medium' | 'low'`.
+  - Risk Score: Normalizes both `0–100` integers and `0.0–1.0` floats into a consistent `0.0–1.0` float with safe rounding.
+  - MITRE Techniques: Unifies arrays of string codes (`"T1110"`) and nested objects (`{ mitre_id: "T1110", technique: "Brute Force" }`).
+  - Correlated Events: Safeguards `null` / `undefined` into empty arrays `[]`.
 
 ---
 
-## How to Run Locally (Right Now)
+## Backend API Endpoints (Quick Reference)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Service healthcheck (`{"status": "ok"}`) |
+| `GET` | `/incidents` | List all correlated incidents |
+| `GET` | `/incidents/{id}` | Fetch single incident detail |
+| `GET` | `/incidents/{id}/dossier` | Fetch formatted JSON forensic incident dossier |
+| `PATCH`| `/incidents/{id}/status` | Update incident status (`open`/`investigating`/`contained`/`resolved`) |
+| `GET` | `/analytics/risky-users` | Fetch UEBA identity risk rankings with sparkline trend data |
+| `POST`| `/actions/isolate-host` | Quarantine host network bridge |
+| `POST`| `/actions/revoke-user` | Invalidate user active sessions and OAuth tokens |
+| `POST`| `/actions/block-c2` | Deploy perimeter firewall IP block rule |
+| `POST`| `/actions/capture-forensics` | Trigger volatile memory and socket dump |
+| `POST`| `/actions/trigger-playbook` | Execute automated multi-step SOAR containment playbook |
+| `WS`  | `/ws/incidents` | Real-time WebSocket stream for incidents, telemetry, and actions |
+
+---
+
+## How to Run
+
+### 1. Local Development (Recommended)
 
 ```bash
-# Frontend dev server (currently running on port 5173)
-cd frontend && npm run dev
+# Terminal 1: Backend API & WebSocket server
+cd backend
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-# Backend stub (Python 3.11 + fastapi + uvicorn installed system-wide)
-cd backend && python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# Terminal 2: Frontend Dev Server
+cd frontend
+npm run dev
+
+# Terminal 3 (Optional): Fire Demo Attack Telemetry
+cd demo-app
+python3 trigger.py --loop
 ```
 
-Open: **http://localhost:5173**
+- Frontend: **http://localhost:5173**
+- Backend API Docs: **http://localhost:8000/docs**
 
----
-
-## How to Run via Docker (Team)
+### 2. Docker Compose (Full Stack)
 
 ```bash
-# From repo root — requires Docker Desktop
 docker compose up --build
-
-# Frontend → http://localhost:5173
-# Backend  → http://localhost:8000
-# API docs → http://localhost:8000/docs  (FastAPI auto-docs)
 ```
 
 ---
 
-## Phase 4 Cutover — Switching Mock → Live API
+## Demo Checklist & Presentation Flow
 
-In [`src/api/incidents.js`](frontend/src/api/incidents.js), change **line 13**:
-
-```js
-// Before (mock mode):
-const USE_LIVE_API = false
-
-// After (live mode):
-const USE_LIVE_API = true
-```
-
-That is the **only** change needed. The WebSocket client is already live — it connects automatically on page load and reconnects on drop.
-
----
-
-## Merge Checkpoints (from spec)
-
-| Time | Checkpoint | Status |
-|---|---|---|
-| ~2:30 | Docker Compose working | ✅ Done — `docker-compose.yml` ready |
-| ~6:00–6:15 | Team full-pipeline checkpoint | ✅ Both screens done with mock data |
-| ~9:30 | Post live-data wiring | ⬜ Flip `USE_LIVE_API = true` |
-| ~11:00 | Pre-demo freeze | ⬜ Bug fixes only after this |
-
----
-
-## Known Issues / Watchouts
-
-| Issue | Severity | Notes |
-|---|---|---|
-| `uv python install` process hangs indefinitely | Low | Kill with `pkill -f "uv python install"` — not needed for this project |
-| Backend stub pushed to `rohan/frontend`, not Tanmay's backend service | Info | Stub is a drop-in target; Tanmay replaces `backend/` directory |
-| HashRouter used (not BrowserRouter) | Info | Intentional — works in Docker without server rewrite rules. URLs look like `/#/incident/INC-001` |
-| `COMPONENTS` const in RiskScoreBreakdown.jsx is declared but unused | Low | Defined for future extension; Pyrefly may flag it |
-| WebSocket will fail in mock mode (no backend running) | Expected | Frontend shows "Offline" status gracefully — incidents still load from mock REST |
-
----
-
-## Spec Phases Remaining
-
-- **Phase 4 (7:30–9:30):** Flip `USE_LIVE_API = true`, verify WS live stream, fix schema drift with correlation-engine teammate
-- **Phase 5 (9:30–11:00, STRETCH):** Attack-graph visual — only if both screens are demo-stable. CSS timeline only, no React Flow
-- **Phase 6 (11:00–12:00):** Demo machine setup, 5× end-to-end trigger runs, screen resolution check, backup video
-
----
-
-## Git History (rohan/frontend)
-
-```
-dfa4b1d  fix: HTTPException 404 + extend type error + pyrefly config
-646c4f8  feat: initialize project dependencies and add incident mock data file 2 page interface
-cd2aafb  Initial commit
-```
+1. **SOC Overview Walkthrough:**
+   - Review executive KPIs on the **SOAR Performance Bar** (MTTD, MTTR, Automation rate).
+   - Inspect **Attack Velocity & Flow Chart** (toggle between *Incident Volume* and *Anomaly Wave*).
+   - Show **Severity Distribution Donut Chart** and breakdown percentages.
+   - Switch right panel to **Risky Users (UEBA)**; showcase Eve Patel's risk sparkline and execute a 1-click **Revoke Session**.
+2. **Incident Drill-Down:**
+   - Click `INC-006` (Critical Ransomware incident on `laptop-mgmt-05.corp`).
+   - Highlight the 4-factor **Risk Score Breakdown** and chronological **Evidence Timeline**.
+   - Review MITRE ATT&CK technique tags (hyperlinked to official MITRE knowledge base).
+3. **Active SOAR Remediation:**
+   - In the **SOAR Remediation Console**, switch status from `Open` to `Investigating`.
+   - Run the **Rapid Ransomware Containment Playbook**; observe real-time animated execution of all 4 containment steps.
+4. **Forensic Dossier Export:**
+   - Click **Export Dossier (JSON)** in the header.
+   - Inspect the downloaded JSON file to show the complete `TLP:AMBER` forensic case file ready for DFIR and compliance.
