@@ -112,6 +112,137 @@ SEED_INCIDENTS = [
     },
 ]
 
+SEED_INCIDENTS_EXTRA = [
+    {
+        "incident_id": "INC-004",
+        "id": "e4f6a67d-4567-8901-23de-f01234567891",
+        "created_at": "2026-09-08T09:05:50Z",
+        "host": "server-api-01.corp",
+        "host_id": "server-api-01.corp",
+        "user": "svc_account",
+        "user_id": "svc_account",
+        "severity": "high",
+        "risk_score": 0.82,
+        "mitre_techniques": ["T1136", "T1059", "T1098"],
+        "explanation": "Unauthorized service account creation at 03:00 UTC followed by scheduled task persistence mechanism. Pattern strongly suggests attacker establishing long-term access foothold.",
+        "correlated_events": [
+            {
+                "event_id": "EVT-004a",
+                "type": "account_creation",
+                "timestamp": "2026-09-08T09:03:00Z",
+                "anomaly_score": 0.88,
+                "rule_score": 0.76,
+                "detail": "New service account 'svc_monitor2' created outside provisioning hours (03:00 UTC)",
+            },
+            {
+                "event_id": "EVT-004b",
+                "type": "persistence",
+                "timestamp": "2026-09-08T09:04:30Z",
+                "anomaly_score": 0.85,
+                "rule_score": 0.79,
+                "detail": "Scheduled task registered: runs encoded PowerShell at system startup",
+            },
+        ],
+    },
+    {
+        "incident_id": "INC-005",
+        "id": "f5a7b78e-5678-9012-34ef-012345678902",
+        "created_at": "2026-09-08T10:34:00Z",
+        "host": "workstation-31.corp",
+        "host_id": "workstation-31.corp",
+        "user": "dave.kim",
+        "user_id": "dave.kim",
+        "severity": "low",
+        "risk_score": 0.23,
+        "mitre_techniques": ["T1071"],
+        "explanation": "Single outbound connection to an unrecognized IP on a non-standard port. Could be legitimate tool or minor policy violation. Flagged for review; low confidence of malicious intent.",
+        "correlated_events": [
+            {
+                "event_id": "EVT-005a",
+                "type": "network_anomaly",
+                "timestamp": "2026-09-08T10:32:00Z",
+                "anomaly_score": 0.28,
+                "rule_score": 0.19,
+                "detail": "Outbound connection on port 8443 to IP not in corporate egress allowlist",
+            },
+        ],
+    },
+    {
+        "incident_id": "INC-006",
+        "id": "a6b8c89f-6789-0123-45fa-123456789013",
+        "created_at": "2026-09-08T11:18:42Z",
+        "host": "laptop-mgmt-05.corp",
+        "host_id": "laptop-mgmt-05.corp",
+        "user": "eve.patel",
+        "user_id": "eve.patel",
+        "severity": "critical",
+        "risk_score": 0.97,
+        "mitre_techniques": ["T1003", "T1021", "T1078", "T1110"],
+        "explanation": "CRITICAL: Active ransomware deployment in progress. Credential dumping via LSASS followed by rapid pass-the-hash propagation to 7 hosts. File encryption has begun. IMMEDIATE ISOLATION REQUIRED.",
+        "correlated_events": [
+            {
+                "event_id": "EVT-006a",
+                "type": "credential_dump",
+                "timestamp": "2026-09-08T11:15:00Z",
+                "anomaly_score": 0.99,
+                "rule_score": 0.98,
+                "detail": "LSASS memory access by non-system process — credential dumping detected (Mimikatz signature)",
+            },
+            {
+                "event_id": "EVT-006b",
+                "type": "lateral_movement",
+                "timestamp": "2026-09-08T11:16:30Z",
+                "anomaly_score": 0.95,
+                "rule_score": 0.91,
+                "detail": "Pass-the-hash lateral movement to 7 hosts in 90 seconds using dumped NTLM hashes",
+            },
+            {
+                "event_id": "EVT-006c",
+                "type": "ransomware_indicator",
+                "timestamp": "2026-09-08T11:18:00Z",
+                "anomaly_score": 0.97,
+                "rule_score": 0.96,
+                "detail": "Mass file encryption activity detected: 3,400 files modified with .locked extension",
+            },
+        ],
+    },
+    {
+        "incident_id": "INC-007",
+        "id": "b7c9d90a-7890-1234-56ab-234567890124",
+        "created_at": "2026-09-08T12:01:11Z",
+        "host": "server-file-03.corp",
+        "host_id": "server-file-03.corp",
+        "user": "frank.wu",
+        "user_id": "frank.wu",
+        "severity": "medium",
+        "risk_score": 0.44,
+        "mitre_techniques": ["T1083", "T1005"],
+        "explanation": "Unusual file discovery and bulk staging of sensitive HR and finance documents. Activity pattern consistent with insider reconnaissance prior to exfiltration. No external connections observed yet.",
+        "correlated_events": [
+            {
+                "event_id": "EVT-007a",
+                "type": "file_discovery",
+                "timestamp": "2026-09-08T11:59:00Z",
+                "anomaly_score": 0.47,
+                "rule_score": 0.41,
+                "detail": "Recursive directory enumeration of /finance and /hr shares — 12,000 files indexed in 3 minutes",
+            },
+            {
+                "event_id": "EVT-007b",
+                "type": "data_collection",
+                "timestamp": "2026-09-08T12:00:20Z",
+                "anomaly_score": 0.45,
+                "rule_score": 0.43,
+                "detail": "Bulk copy of 850 MB from shared drive to local temp directory",
+            },
+        ],
+    },
+]
+
+# Merge seed lists
+SEED_INCIDENTS = SEED_INCIDENTS + SEED_INCIDENTS_EXTRA
+
+
 
 # ---------------- HEALTH ----------------
 
