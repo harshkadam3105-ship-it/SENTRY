@@ -1,10 +1,11 @@
 import sys
 import os
+import re
 import random
 from collections import deque
 from datetime import datetime
-from uuid import uuid4
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException
+from uuid import uuid4, UUID
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -38,7 +39,7 @@ try:
     from backend.detection.detector import DetectionEngine
     _detection_engine = DetectionEngine()
     _DETECTION_OK = True
-    print("[Sentry] DetectionEngine loaded ✓")
+    print("[Sentry] DetectionEngine loaded [OK]")
 except Exception as _e:
     _detection_engine = None
     _DETECTION_OK = False
@@ -54,13 +55,22 @@ try:
     _risk_scorer = RiskScorer()
     _incident_generator = IncidentGenerator()
     _PIPELINE_OK = True
-    print("[Sentry] Correlation + Risk + Incident engines loaded ✓")
+    print("[Sentry] Correlation + Risk + Incident engines loaded [OK]")
 except Exception as _e:
     _correlation_engine = None
     _risk_scorer = None
     _incident_generator = None
     _PIPELINE_OK = False
     print(f"[Sentry] Correlation pipeline unavailable: {_e}")
+
+# ── AI Threat Analyst Engine (Option 1: Hybrid Reasoning Layer) ──────────────
+try:
+    from backend.ai.analyst import AIThreatAnalyst
+    _ai_analyst = AIThreatAnalyst()
+    print("[Sentry] AI Threat Analyst Engine initialized [OK]")
+except Exception as _ai_init_err:
+    _ai_analyst = None
+    print(f"[Sentry] AI Threat Analyst unavailable: {_ai_init_err}")
 
 # ── Sliding event window for correlation (last 100 events in memory) ──────────
 _EVENT_WINDOW: deque = deque(maxlen=100)
@@ -108,10 +118,101 @@ if _DETECTION_OK:
     try:
         _baseline = _build_baseline_events(50)
         _detection_engine.train(_baseline)
-        print("[Sentry] AnomalyDetector trained on 50 synthetic baseline events ✓")
+        print("[Sentry] AnomalyDetector trained on 50 synthetic baseline events [OK]")
     except Exception as _train_err:
         print(f"[Sentry] AnomalyDetector training failed (rule-based only): {_train_err}")
-        _DETECTION_OK = False
+def _parse_log_features(text: str) -> dict:
+    """Intelligently extracts security telemetry features from user-typed log/scenario text."""
+    if not text or not isinstance(text, str):
+        return {}
+    t = text.lower()
+    features = {}
+
+    # 1. Failed Logins
+    fl_match = re.search(r'(\d+)\s*(?:consecutive\s*)?(?:failed|unsuccessful|invalid)[^0-9\n]{0,30}(?:login|auth|ssh|rdp|attempts?)', t)
+    if not fl_match:
+        fl_match = re.search(r'(?:failed|unsuccessful)[^0-9\n]{0,30}(?:login|auth|attempts?)[^0-9\n]{0,10}(\d+)', t)
+    if not fl_match:
+        fl_match = re.search(r'(\d+)\s*(?:failed\s*)?attempts?', t)
+    if fl_match:
+        features["failed_login_count"] = int(fl_match.group(1))
+    elif re.search(r'\b(failed login|auth fail|unsuccessful login)\b', t):
+        features["failed_login_count"] = 6
+
+    # 2. Data Exfiltration / Bytes
+    gb_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:gb|gigabytes?|gigs?)\b', t)
+    mb_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:mb|megabytes?)\b', t)
+    if gb_match:
+        features["bytes_sent"] = int(float(gb_match.group(1)) * 1024 * 1024 * 1024)
+        features["connection_rate"] = 35.0
+    elif mb_match:
+        features["bytes_sent"] = int(float(mb_match.group(1)) * 1024 * 1024)
+        features["connection_rate"] = 20.0
+    elif re.search(r'\b(exfiltrat|egress|bulk upload|data leak|data transfer)\b', t):
+        features["bytes_sent"] = 1400000000
+        features["connection_rate"] = 35.0
+
+    # 3. Privilege Escalation
+    if re.search(r'\b(privilege escalation|escalat|sudo|elevated to root|elevation of privilege|uac bypass|setuid|became root)\b', t):
+        features["privilege_change"] = True
+
+    # 4. Credential Dumping
+    if re.search(r'\b(lsass|mimikatz|sekurlsa|procdump|credential dump|sam dump|ntds\.dit|hashcat)\b', t):
+        features["credential_dump_indicator"] = True
+        features["lsass_access"] = True
+
+    # 5. Living-off-the-land / Suspicious Parent Process
+    if re.search(r'\b(spawned|powershell|cmd\.exe|wscript|cscript|mshta|living-off-the-land|parent process|child process)\b', t):
+        features["parent_process_change"] = True
+        features["new_process"] = True
+
+    # 6. Defense Evasion / Log Tampering
+    if re.search(r'\b(wevtutil|clear-eventlog|cleared log|log wipe|tamper|disable edr|kill agent|wipe log|log cleared)\b', t):
+        features["log_cleared"] = True
+
+    # 7. Mass File Modification / Ransomware
+    file_match = re.search(r'(\d+)\s*files?\s*(?:altered|modified|encrypted|changed)', t)
+    if file_match:
+        features["file_change_rate"] = float(file_match.group(1))
+    elif re.search(r'\b(ransomware|encrypting|mass file|file modification spike)\b', t):
+        features["file_change_rate"] = 85.0
+
+    # 8. Reconnaissance / Port Scan
+    scan_match = re.search(r'(?:across|probe|scanning)\s*(\d+)\s*(?:hosts?|endpoints?|destinations?|ips?|subnets?)', t)
+    if scan_match:
+        features["unique_destinations"] = int(scan_match.group(1))
+        features["connection_rate"] = 25.0
+    elif re.search(r'\b(port scan|port sweep|nmap|reconnaissance|subnet sweep)\b', t):
+        features["unique_destinations"] = 35
+        features["connection_rate"] = 22.0
+
+    # 9. Lateral Movement
+    lat_match = re.search(r'(\d+)\s*(?:remote\s*)?(?:rdp|smb|ssh)\s*(?:connections?|sessions?)', t)
+    if lat_match:
+        features["remote_session_count"] = int(lat_match.group(1))
+        features["lateral_movement"] = True
+    elif re.search(r'\b(lateral movement|psexec|smb spread|remote session)\b', t):
+        features["remote_session_count"] = 3
+        features["lateral_movement"] = True
+
+    # 10. Persistence
+    if re.search(r'\b(schtasks|scheduled task|crontab|autorun|registry run|persistence)\b', t):
+        features["scheduled_task_created"] = True
+        features["persistence_created"] = True
+
+    # 11. Tor / Untrusted Source Login
+    if re.search(r'\b(tor\b|exit node|untrusted ip|foreign ip)', t):
+        features["source_ip_change"] = True
+        features["success_count"] = 1
+
+    # 12. Generic Warning / Threat Indicators
+    if re.search(r'\b(warning|alert|threat|suspicious|intrusion|unauthorized|breach|malicious|danger|attack|incident)\b', t):
+        if not any(k in features for k in ("failed_login_count", "bytes_sent", "privilege_change", "credential_dump_indicator", "file_change_rate")):
+            features["failed_login_count"] = 8
+            features["auth_failure_rate"] = 0.85
+
+    return features
+
 
 app = FastAPI(title="Sentry Backend")
 
@@ -207,135 +308,11 @@ SEED_INCIDENTS = [
     },
 ]
 
-SEED_INCIDENTS_EXTRA = [
-    {
-        "incident_id": "INC-004",
-        "id": "e4f6a67d-4567-8901-23de-f01234567891",
-        "created_at": "2026-09-08T09:05:50Z",
-        "host": "server-api-01.corp",
-        "host_id": "server-api-01.corp",
-        "user": "svc_account",
-        "user_id": "svc_account",
-        "severity": "high",
-        "risk_score": 0.82,
-        "mitre_techniques": ["T1136", "T1059", "T1098"],
-        "explanation": "Unauthorized service account creation at 03:00 UTC followed by scheduled task persistence mechanism. Pattern strongly suggests attacker establishing long-term access foothold.",
-        "correlated_events": [
-            {
-                "event_id": "EVT-004a",
-                "type": "account_creation",
-                "timestamp": "2026-09-08T09:03:00Z",
-                "anomaly_score": 0.88,
-                "rule_score": 0.76,
-                "detail": "New service account 'svc_monitor2' created outside provisioning hours (03:00 UTC)",
-            },
-            {
-                "event_id": "EVT-004b",
-                "type": "persistence",
-                "timestamp": "2026-09-08T09:04:30Z",
-                "anomaly_score": 0.85,
-                "rule_score": 0.79,
-                "detail": "Scheduled task registered: runs encoded PowerShell at system startup",
-            },
-        ],
-    },
-    {
-        "incident_id": "INC-005",
-        "id": "f5a7b78e-5678-9012-34ef-012345678902",
-        "created_at": "2026-09-08T10:34:00Z",
-        "host": "workstation-31.corp",
-        "host_id": "workstation-31.corp",
-        "user": "dave.kim",
-        "user_id": "dave.kim",
-        "severity": "low",
-        "risk_score": 0.23,
-        "mitre_techniques": ["T1071"],
-        "explanation": "Single outbound connection to an unrecognized IP on a non-standard port. Could be legitimate tool or minor policy violation. Flagged for review; low confidence of malicious intent.",
-        "correlated_events": [
-            {
-                "event_id": "EVT-005a",
-                "type": "network_anomaly",
-                "timestamp": "2026-09-08T10:32:00Z",
-                "anomaly_score": 0.28,
-                "rule_score": 0.19,
-                "detail": "Outbound connection on port 8443 to IP not in corporate egress allowlist",
-            },
-        ],
-    },
-    {
-        "incident_id": "INC-006",
-        "id": "a6b8c89f-6789-0123-45fa-123456789013",
-        "created_at": "2026-09-08T11:18:42Z",
-        "host": "laptop-mgmt-05.corp",
-        "host_id": "laptop-mgmt-05.corp",
-        "user": "eve.patel",
-        "user_id": "eve.patel",
-        "severity": "critical",
-        "risk_score": 0.97,
-        "mitre_techniques": ["T1003", "T1021", "T1078", "T1110"],
-        "explanation": "CRITICAL: Active ransomware deployment in progress. Credential dumping via LSASS followed by rapid pass-the-hash propagation to 7 hosts. File encryption has begun. IMMEDIATE ISOLATION REQUIRED.",
-        "correlated_events": [
-            {
-                "event_id": "EVT-006a",
-                "type": "credential_dump",
-                "timestamp": "2026-09-08T11:15:00Z",
-                "anomaly_score": 0.99,
-                "rule_score": 0.98,
-                "detail": "LSASS memory access by non-system process — credential dumping detected (Mimikatz signature)",
-            },
-            {
-                "event_id": "EVT-006b",
-                "type": "lateral_movement",
-                "timestamp": "2026-09-08T11:16:30Z",
-                "anomaly_score": 0.95,
-                "rule_score": 0.91,
-                "detail": "Pass-the-hash lateral movement to 7 hosts in 90 seconds using dumped NTLM hashes",
-            },
-            {
-                "event_id": "EVT-006c",
-                "type": "ransomware_indicator",
-                "timestamp": "2026-09-08T11:18:00Z",
-                "anomaly_score": 0.97,
-                "rule_score": 0.96,
-                "detail": "Mass file encryption activity detected: 3,400 files modified with .locked extension",
-            },
-        ],
-    },
-    {
-        "incident_id": "INC-007",
-        "id": "b7c9d90a-7890-1234-56ab-234567890124",
-        "created_at": "2026-09-08T12:01:11Z",
-        "host": "server-file-03.corp",
-        "host_id": "server-file-03.corp",
-        "user": "frank.wu",
-        "user_id": "frank.wu",
-        "severity": "medium",
-        "risk_score": 0.44,
-        "mitre_techniques": ["T1083", "T1005"],
-        "explanation": "Unusual file discovery and bulk staging of sensitive HR and finance documents. Activity pattern consistent with insider reconnaissance prior to exfiltration. No external connections observed yet.",
-        "correlated_events": [
-            {
-                "event_id": "EVT-007a",
-                "type": "file_discovery",
-                "timestamp": "2026-09-08T11:59:00Z",
-                "anomaly_score": 0.47,
-                "rule_score": 0.41,
-                "detail": "Recursive directory enumeration of /finance and /hr shares — 12,000 files indexed in 3 minutes",
-            },
-            {
-                "event_id": "EVT-007b",
-                "type": "data_collection",
-                "timestamp": "2026-09-08T12:00:20Z",
-                "anomaly_score": 0.45,
-                "rule_score": 0.43,
-                "detail": "Bulk copy of 850 MB from shared drive to local temp directory",
-            },
-        ],
-    },
-]
+_LIVE_INCIDENTS = []
+SEED_INCIDENTS_EXTRA = []
+_CONNECTED_CLIENTS: dict = {}
 
-# Merge seed lists
-SEED_INCIDENTS = SEED_INCIDENTS + SEED_INCIDENTS_EXTRA
+
 
 
 
@@ -349,7 +326,23 @@ def health():
 # ---------------- EVENTS ----------------
 
 @app.post("/events")
-async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
+async def ingest_event(event: EventIn, request: Request, db: Session = Depends(get_db)):
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if client_ip not in ("127.0.0.1", "localhost", "::1"):
+        import socket
+        try:
+            resolved_host = socket.gethostbyaddr(client_ip)[0]
+        except Exception:
+            resolved_host = client_ip
+        _CONNECTED_CLIENTS[client_ip] = {
+            "host": resolved_host,
+            "ip": client_ip,
+            "role": "Connected Endpoint",
+            "last_seen": "Active Telemetry",
+        }
+        if event.src_ip in (None, "", "10.211.2.200"):
+            event.src_ip = client_ip
+
     # ── 1. Persist to DB ─────────────────────────────────────────────────────
     try:
         db_event = Event(
@@ -372,6 +365,7 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_event)
     except Exception as e:
+        db.rollback()
         print("[Sentry] DB event insert notice:", e)
 
     # Serialize for broadcast + pipeline
@@ -379,6 +373,16 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
         event_data = event.model_dump(mode="json")
     except AttributeError:
         event_data = event.dict()
+
+    # Dynamic log parser for custom user cases: extract features from raw log if present
+    log_text = (event_data.get("raw_data") or {}).get("log") or ""
+    if log_text and isinstance(log_text, str):
+        inferred = _parse_log_features(log_text)
+        current_features = dict(event_data.get("features") or {})
+        for k, v in inferred.items():
+            if k not in current_features or current_features[k] in (0, 0.0, False, None):
+                current_features[k] = v
+        event_data["features"] = current_features
 
     # ── 2. Detection pipeline (Ayaan + Harsh) ────────────────────────────────
     detection_result = None
@@ -422,20 +426,45 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
     _EVENT_WINDOW.append(event)
 
     # ── 6. Generate + broadcast incident if risk is significant ───────────────
-    if _PIPELINE_OK and detection_result and risk_score_raw >= 40:
+    incident_dict = None
+    explanation = ""
+    is_benign = (rule_score == 0 and event.severity <= 2 and str(event.event_type).lower() in ("normal_login", "benign", "heartbeat", "status"))
+    should_generate = _PIPELINE_OK and detection_result and not is_benign and (risk_score_raw >= 40 or rule_score > 0 or event.severity >= 3)
+    if should_generate:
         try:
             incident_dict = _incident_generator.generate(
                 events=[event_data],
                 detection_results=[detection_result],
                 risk_score=risk_score_raw,
             )
+            # Map severity to label (critical, high, medium, low)
+            if risk_score_raw >= 80:
+                severity_label = "critical"
+            elif risk_score_raw >= 60:
+                severity_label = "high"
+            elif risk_score_raw >= 35:
+                severity_label = "medium"
+            else:
+                severity_label = "low"
+
+            reasons = detection_result.get("rule_reasons", [])
+            if reasons:
+                explanation = " • ".join(reasons)
+            elif anomaly_score >= 50:
+                explanation = f"Statistical behavioral anomaly detected: model confidence {anomaly_score:.1f}% indicates abnormal telemetry divergence."
+            else:
+                explanation = "Elevated risk pattern detected across correlated system telemetry."
+
             # Enrich with readable fields for frontend
+            incident_dict["severity"] = severity_label
             incident_dict["risk_score"] = round(risk_score_raw / 100, 2)
             incident_dict["anomaly_score"] = round(anomaly_score, 2)
             incident_dict["rule_score"] = round(rule_score, 2)
             incident_dict["correlation_score"] = round(correlation_score, 2)
+            incident_dict["explanation"] = explanation
+            incident_dict["description"] = explanation
             incident_dict["host"] = event.host_id
-            incident_dict["user"] = event.user_id
+            incident_dict["user"] = event.user_id or "system"
             incident_dict["created_at"] = event.timestamp.isoformat()
             incident_dict["correlated_events"] = [{
                 "event_id": str(event.event_id),
@@ -445,11 +474,44 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
                 "rule_score": round(rule_score / 100, 2),
                 "detail": event.raw_data.get("log", event.event_type),
             }]
+
+            # ── 6b. Autonomous AI Threat Analyst Layer ────────────────────────
+            ai_eval = None
+            if _ai_analyst is not None:
+                try:
+                    ai_eval = _ai_analyst.analyze(
+                        incident=incident_dict,
+                        correlated_events=list(_EVENT_WINDOW),
+                    )
+                    incident_dict["ai_analysis"] = ai_eval
+                    if ai_eval.get("executive_summary"):
+                        incident_dict["ai_summary"] = ai_eval["executive_summary"]
+                except Exception as _ai_err:
+                    print(f"[Sentry] AI Threat Analyst evaluation note: {_ai_err}")
+
+            # Store in live incidents list
+            _LIVE_INCIDENTS.insert(0, incident_dict)
+
+            # Persist to database if available
+            try:
+                db_inc = Incident(
+                    id=UUID(incident_dict["incident_id"]),
+                    title=incident_dict["title"],
+                    severity=5 if severity_label == "critical" else 4 if severity_label == "high" else 3 if severity_label == "medium" else 1,
+                    risk_score=float(incident_dict["risk_score"]),
+                    confidence=float(incident_dict.get("confidence", 0.9)),
+                    status=incident_dict.get("status", "open"),
+                    created_at=event.timestamp,
+                    updated_at=event.timestamp,
+                )
+                db.add(db_inc)
+                db.commit()
+            except Exception as _db_err:
+                db.rollback()
+                print(f"[Sentry] DB Incident insert notice: {_db_err}")
+
             await manager.broadcast({"type": "incident", "data": incident_dict})
-            print(f"[Sentry] Incident generated: risk={risk_score_raw:.1f} "
-                  f"anomaly={anomaly_score:.1f} rule={rule_score:.1f} "
-                  f"correlation={correlation_score:.2f} "
-                  f"tags={detection_result.get('rule_tags', [])}")
+            print(f"[Sentry] Incident generated: {incident_dict.get('title')} (risk={risk_score_raw:.1f})")
         except Exception as _inc_err:
             print(f"[Sentry] Incident generation error: {_inc_err}")
 
@@ -466,32 +528,13 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
         "rule_score": round(rule_score, 2),
         "risk_score": round(risk_score_raw, 2),
         "correlation_score": round(correlation_score, 2),
-        "incident_generated": _PIPELINE_OK and detection_result is not None and risk_score_raw >= 40,
+        "incident_generated": should_generate and incident_dict is not None,
+        "incident": incident_dict,
+        "ai_analysis": incident_dict.get("ai_analysis") if incident_dict else None,
+        "rule_tags": detection_result.get("rule_tags", []) if detection_result else [],
+        "rule_reasons": detection_result.get("rule_reasons", []) if detection_result else [],
+        "explanation": explanation if explanation else ("Normal activity - no security threat detected" if (not detection_result or rule_score == 0) else "Low-risk anomaly"),
     }
-
-
-@app.post("/ingest")
-async def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
-    """Bridge legacy trigger.py and external payloads into standard EventIn pipeline."""
-    from uuid import uuid4
-    from datetime import datetime
-    event_in = EventIn(
-        event_id=uuid4(),
-        timestamp=datetime.utcnow(),
-        source_type=payload.get("source_type", payload.get("source", "endpoint")),
-        host_id=payload.get("host_id", payload.get("host", "workstation-14.corp")),
-        user_id=payload.get("user_id", payload.get("user", "target.user")),
-        src_ip=payload.get("src_ip", "10.0.0.55"),
-        dst_ip=payload.get("dst_ip", "192.168.1.14"),
-        src_port=payload.get("src_port", 22),
-        dst_port=payload.get("dst_port", 22),
-        protocol=payload.get("protocol", "TCP"),
-        event_type=payload.get("event_type", "attack_indicator"),
-        severity=int(payload.get("severity", 4)),
-        features=payload.get("features", {"failed_logins": 8, "requests_per_minute": 150, "error_rate": 0.3}),
-        raw_data=payload.get("raw_data", {"log": payload.get("detail", "Attack payload triggered")}),
-    )
-    return await ingest_event(event_in, db)
 
 
 @app.get("/events")
@@ -503,9 +546,8 @@ def list_events(limit: int = 100, db: Session = Depends(get_db)):
     except Exception as e:
         print("[Sentry] Event query notice:", e)
 
-    # Flatten seed incident events as fallback
     fallback_events = []
-    for inc in SEED_INCIDENTS:
+    for inc in _LIVE_INCIDENTS:
         fallback_events.extend(inc.get("correlated_events") or [])
     return fallback_events[:limit]
 
@@ -514,18 +556,15 @@ def list_events(limit: int = 100, db: Session = Depends(get_db)):
 
 @app.get("/incidents")
 def list_incidents(limit: int = 50, db: Session = Depends(get_db)):
-    try:
-        incidents = db.query(Incident).order_by(desc(Incident.created_at)).limit(limit).all()
-        if incidents:
-            return incidents
-    except Exception as e:
-        print("[Sentry] Incident query notice:", e)
-
-    return SEED_INCIDENTS[:limit]
+    return _LIVE_INCIDENTS[:limit]
 
 
 @app.get("/incidents/{incident_id}")
 def get_incident(incident_id: str, db: Session = Depends(get_db)):
+    for inc in _LIVE_INCIDENTS:
+        if inc.get("incident_id") == incident_id or str(inc.get("id")) == incident_id:
+            return inc
+
     try:
         incident = db.query(Incident).filter(Incident.id == incident_id).first()
         if incident:
@@ -533,28 +572,264 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         print("[Sentry] Single incident query notice:", e)
 
-    for inc in SEED_INCIDENTS:
-        if inc["incident_id"] == incident_id or inc.get("id") == incident_id:
-            return inc
-
     raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found")
+
+
+@app.post("/incidents/clear")
+@app.delete("/incidents")
+async def clear_all_incidents(db: Session = Depends(get_db)):
+    """Wipes all live incidents and events to start with a clean slate."""
+    global _LIVE_INCIDENTS, _EVENT_WINDOW
+    _LIVE_INCIDENTS.clear()
+    _EVENT_WINDOW.clear()
+    try:
+        db.query(Incident).delete()
+        db.query(Event).delete()
+        db.commit()
+    except Exception as e:
+        print("[Sentry] DB clear note:", e)
+
+    await manager.broadcast({"type": "clear_incidents", "data": {}})
+    return {"status": "ok", "message": "All incidents wiped cleanly."}
+
+
+SIMULATION_TEMPLATES = {
+    "brute_force": {
+        "source_type": "auth",
+        "host_id": "workstation-14.corp",
+        "user_id": "admin",
+        "src_ip": "198.51.100.77",
+        "dst_ip": "192.168.1.14",
+        "src_port": 49152,
+        "dst_port": 22,
+        "protocol": "TCP",
+        "event_type": "failed_login",
+        "severity": 4,
+        "features": {
+            "failed_login_count": 8,
+            "success_count": 0,
+            "connection_rate": 8.0,
+        },
+        "raw_data": {
+            "log": "8 consecutive failed SSH authentication attempts detected from 198.51.100.77",
+            "username": "admin"
+        },
+    },
+    "failed_then_success": {
+        "source_type": "auth",
+        "host_id": "srv-finance-02",
+        "user_id": "svc_backup",
+        "src_ip": "203.0.113.45",
+        "dst_ip": "192.168.2.5",
+        "src_port": 51234,
+        "dst_port": 443,
+        "protocol": "TCP",
+        "event_type": "successful_login",
+        "severity": 4,
+        "features": {
+            "failed_login_count": 4,
+            "success_count": 1,
+        },
+        "raw_data": {
+            "log": "Successful credential login following 4 consecutive failed authentication attempts",
+            "username": "svc_backup"
+        },
+    },
+    "suspicious_process": {
+        "source_type": "edr",
+        "host_id": "dev-box-03",
+        "user_id": "bob.miller",
+        "src_ip": "192.168.1.55",
+        "dst_ip": "192.168.1.55",
+        "src_port": 0,
+        "dst_port": 0,
+        "protocol": "LOCAL",
+        "event_type": "new_process",
+        "severity": 4,
+        "features": {
+            "new_process": True,
+            "process_name": "mimikatz.exe",
+        },
+        "raw_data": {
+            "log": "EDR detected known credential harvesting binary execution: mimikatz.exe",
+            "process_name": "mimikatz.exe",
+            "cmdline": "mimikatz.exe privilege::debug sekurlsa::logonpasswords"
+        },
+    },
+    "unusual_outbound": {
+        "source_type": "network",
+        "host_id": "srv-finance-02",
+        "user_id": "svc_backup",
+        "src_ip": "192.168.2.5",
+        "dst_ip": "198.51.100.44",
+        "src_port": 44321,
+        "dst_port": 443,
+        "protocol": "TCP",
+        "event_type": "high_egress",
+        "severity": 4,
+        "features": {
+            "connection_rate": 25.0,
+            "bytes": 4500000000,
+        },
+        "raw_data": {
+            "log": "Massive outbound data flow spike (4.5 GB in 3 mins) to untrusted external IP 198.51.100.44",
+            "connection_rate": 25.0
+        },
+    },
+    "api_abuse": {
+        "source_type": "api_gateway",
+        "host_id": "server-api-01.corp",
+        "user_id": "svc_account",
+        "src_ip": "10.0.0.10",
+        "dst_ip": "10.0.0.1",
+        "src_port": 34567,
+        "dst_port": 8443,
+        "protocol": "HTTPS",
+        "event_type": "api_anomaly",
+        "severity": 3,
+        "features": {
+            "auth_failure_rate": 0.88,
+            "requests_per_minute": 150.0,
+        },
+        "raw_data": {
+            "log": "API Gateway authentication failure rate reached 88% across 500 requests",
+            "auth_failure_rate": 0.88
+        },
+    },
+    "privilege_escalation": {
+        "source_type": "auditd",
+        "host_id": "laptop-mgmt-05.corp",
+        "user_id": "eve.patel",
+        "src_ip": "192.168.1.18",
+        "dst_ip": "192.168.1.18",
+        "src_port": 0,
+        "dst_port": 0,
+        "protocol": "LOCAL",
+        "event_type": "privilege_escalation",
+        "severity": 5,
+        "features": {
+            "privilege_change": True,
+        },
+        "raw_data": {
+            "log": "Privilege level unauthorized transition: standard_user -> root_administrator",
+            "old_privilege": "standard_user",
+            "new_privilege": "root_administrator"
+        },
+    },
+    "suspicious_parent_process": {
+        "source_type": "sysmon",
+        "host_id": "workstation-14.corp",
+        "user_id": "alice.chen",
+        "src_ip": "192.168.1.14",
+        "dst_ip": "192.168.1.14",
+        "src_port": 0,
+        "dst_port": 0,
+        "protocol": "LOCAL",
+        "event_type": "process_creation",
+        "severity": 4,
+        "features": {
+            "parent_process_change": True,
+        },
+        "raw_data": {
+            "log": "Living-off-the-land execution: winword.exe spawned hidden powershell.exe child process",
+            "parent_process": "winword.exe",
+            "child_process": "powershell.exe"
+        },
+    },
+    "suspicious_login_source": {
+        "source_type": "auth",
+        "host_id": "server-api-01.corp",
+        "user_id": "frank.wu",
+        "src_ip": "185.220.101.5",
+        "dst_ip": "10.0.0.10",
+        "src_port": 54321,
+        "dst_port": 443,
+        "protocol": "TCP",
+        "event_type": "successful_login",
+        "severity": 4,
+        "features": {
+            "source_ip_change": True,
+            "success_count": 1,
+        },
+        "raw_data": {
+            "log": "Successful administrator login authenticated from verified Tor exit relay IP: 185.220.101.5",
+            "is_untrusted_source": True,
+        },
+    },
+    "suspicious_file_activity": {
+        "source_type": "file_integrity",
+        "host_id": "server-file-03.corp",
+        "user_id": "frank.wu",
+        "src_ip": "192.168.2.10",
+        "dst_ip": "192.168.2.10",
+        "src_port": 0,
+        "dst_port": 0,
+        "protocol": "LOCAL",
+        "event_type": "mass_file_modification",
+        "severity": 4,
+        "features": {
+            "file_change_rate": 85.0,
+        },
+        "raw_data": {
+            "log": "High-velocity file modification spike: 85 files altered per second in corporate shared drive",
+            "file_change_rate": 85.0
+        },
+    },
+    "network_scanning": {
+        "source_type": "ids",
+        "host_id": "workstation-31.corp",
+        "user_id": "dave.kim",
+        "src_ip": "192.168.1.31",
+        "dst_ip": "192.168.1.0/24",
+        "src_port": 60000,
+        "dst_port": 445,
+        "protocol": "TCP",
+        "event_type": "port_scan",
+        "severity": 4,
+        "features": {
+            "unique_destinations": 35,
+            "connection_rate": 22.0,
+        },
+        "raw_data": {
+            "log": "Intrusion detection: Reconnaissance horizontal port sweep across 35 subnet endpoints",
+            "unique_destinations": 35,
+        },
+    },
+}
+
+
+@app.post("/events/simulate")
+@app.get("/events/simulate")
+async def simulate_rule_event(rule: str = "brute_force", db: Session = Depends(get_db)):
+    """Convenience endpoint to simulate telemetry triggering any of the 10 detection rules."""
+    rule_key = rule.lower().replace("-", "_").replace(" ", "_")
+    template = SIMULATION_TEMPLATES.get(rule_key)
+    if not template:
+        available = list(SIMULATION_TEMPLATES.keys())
+        raise HTTPException(status_code=400, detail=f"Unknown rule '{rule}'. Available rules: {available}")
+
+    event_payload = dict(template)
+    event_payload["event_id"] = str(uuid4())
+    event_payload["timestamp"] = datetime.utcnow()
+    event_in = EventIn(**event_payload)
+    return await ingest_event(event_in, db=db)
 
 
 @app.get("/incidents/{incident_id}/dossier")
 def get_incident_dossier(incident_id: str, db: Session = Depends(get_db)):
     incident = None
-    try:
-        db_inc = db.query(Incident).filter(Incident.id == incident_id).first()
-        if db_inc:
-            incident = db_inc
-    except Exception as e:
-        print("[Sentry] Single incident dossier query notice:", e)
+    for inc in _LIVE_INCIDENTS:
+        if inc.get("incident_id") == incident_id or str(inc.get("id")) == incident_id:
+            incident = inc
+            break
 
     if not incident:
-        for inc in SEED_INCIDENTS:
-            if inc.get("incident_id") == incident_id or inc.get("id") == incident_id:
-                incident = inc
-                break
+        try:
+            db_inc = db.query(Incident).filter(Incident.id == incident_id).first()
+            if db_inc:
+                incident = db_inc
+        except Exception as e:
+            print("[Sentry] Single incident dossier query notice:", e)
 
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found")
@@ -616,6 +891,7 @@ def get_incident_dossier(incident_id: str, db: Session = Depends(get_db)):
         },
         "threat_verdict": {
             "executive_summary": inc_data.get("explanation", ""),
+            "ai_threat_intelligence": inc_data.get("ai_analysis"),
             "mitre_attack_techniques": [
                 {"technique_id": t if isinstance(t, str) else t.get("mitre_id", str(t)), "url": f"https://attack.mitre.org/techniques/{t if isinstance(t, str) else t.get('mitre_id', str(t))}/"}
                 for t in inc_data.get("mitre_techniques", [])
@@ -629,112 +905,6 @@ def get_incident_dossier(incident_id: str, db: Session = Depends(get_db)):
         "raw_source_telemetry": inc_data,
     }
 
-
-@app.get("/incidents/{incident_id}/ai-analysis")
-def get_incident_ai_analysis(incident_id: str, db: Session = Depends(get_db)):
-    """
-    AI-driven incident root cause investigation, feature deviation attribution,
-    and automated containment recommendation endpoint.
-    """
-    try:
-        from backend.detection.ml.ai_copilot import analyze_incident_ai
-    except Exception as e:
-        print("[Sentry] AI Copilot import note:", e)
-        analyze_incident_ai = None
-
-    incident = None
-    try:
-        db_inc = db.query(Incident).filter(Incident.id == incident_id).first()
-        if db_inc:
-            incident = db_inc
-    except Exception as e:
-        print("[Sentry] AI analysis DB query notice:", e)
-
-    if not incident:
-        for inc in SEED_INCIDENTS:
-            if inc.get("incident_id") == incident_id or inc.get("id") == incident_id:
-                incident = inc
-                break
-
-    if not incident:
-        raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found")
-
-    if hasattr(incident, "__dict__"):
-        inc_data = {
-            "incident_id": str(getattr(incident, "id", incident_id)),
-            "host": getattr(incident, "host_id", getattr(incident, "host", "unknown")),
-            "user": getattr(incident, "user_id", getattr(incident, "user", "unknown")),
-            "severity": getattr(incident, "severity", "medium"),
-            "risk_score": getattr(incident, "risk_score", 0.5),
-            "explanation": getattr(incident, "description", getattr(incident, "explanation", "")),
-            "mitre_techniques": getattr(incident, "mitre_techniques", []),
-            "created_at": getattr(incident, "created_at", datetime.utcnow().isoformat() + "Z"),
-            "correlated_events": getattr(incident, "correlated_events", []),
-        }
-    else:
-        inc_data = dict(incident)
-
-    if analyze_incident_ai:
-        return analyze_incident_ai(inc_data)
-
-    return {
-        "incident_id": incident_id,
-        "ai_confidence_score": 95.5,
-        "predicted_kill_chain_phase": "Lateral Movement & Privilege Abuse",
-        "threat_hypothesis": inc_data.get("explanation", "Isolation Forest detected significant multi-variate deviation."),
-        "top_anomaly_factors": [],
-    }
-
-
-# ---------------- DYNAMIC AI LAYER ----------------
-
-try:
-    from backend.core.ai_layer import ai_layer
-except Exception as _ai_err:
-    print(f"[Sentry] AI Layer import notice: {_ai_err}")
-    ai_layer = None
-
-
-@app.post("/ai/chat")
-async def ai_chat_endpoint(payload: dict):
-    """Dynamic AI Security Analyst Assistant endpoint."""
-    query = payload.get("query", "")
-    context = payload.get("context", {})
-    if ai_layer:
-        return ai_layer.chat_response(query, context)
-    return {
-        "query": query,
-        "response": "Sentry AI Layer operational. Monitoring telemetry streams and active host containers.",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
-
-
-@app.post("/ai/predict-next-move")
-async def ai_predict_next_move(payload: dict):
-    """Predicts next MITRE ATT&CK technique and preventative countermeasure."""
-    incident = payload.get("incident", {})
-    if ai_layer:
-        return ai_layer.predict_next_move(incident)
-    return {"predicted_technique": "T1021", "probability_confidence": "85%"}
-
-
-@app.post("/ai/remediation-script")
-async def ai_remediation_script(payload: dict):
-    """Generates executable containment script (PowerShell or Bash)."""
-    incident = payload.get("incident", {})
-    script_type = payload.get("script_type", "powershell")
-    if ai_layer:
-        return ai_layer.generate_remediation_script(incident, script_type)
-    return {"script": "# Sentry Emergency Containment Script\nDisable-NetAdapter -Name *", "script_type": script_type}
-
-
-@app.post("/ai/blast-radius")
-async def ai_blast_radius(payload: dict):
-    """Assesses lateral contagion risk and enterprise asset exposure."""
-    incident = payload.get("incident", {})
-    if ai_layer:
-        return ai_layer.assess_blast_radius(incident)
-    return {"estimated_blast_radius": "3 Enterprise Assets"}
 
 
 # ---------------- ASSETS ----------------
@@ -988,10 +1158,9 @@ async def rollback_files_action(payload: dict, db: Session = Depends(get_db)):
 @app.patch("/incidents/{incident_id}/status")
 async def update_incident_status(incident_id: str, payload: dict, db: Session = Depends(get_db)):
     new_status = payload.get("status", "open").lower()
-    # Update in memory seed list
     found = False
-    for inc in SEED_INCIDENTS:
-        if inc.get("incident_id") == incident_id or inc.get("id") == incident_id:
+    for inc in _LIVE_INCIDENTS:
+        if inc.get("incident_id") == incident_id or str(inc.get("id")) == incident_id:
             inc["status"] = new_status
             found = True
             break
@@ -1015,74 +1184,146 @@ async def update_incident_status(incident_id: str, payload: dict, db: Session = 
 # ---------------- ANALYTICS (UEBA & METRICS) ----------------
 
 @app.get("/analytics/risky-users")
-def get_risky_users(db: Session = Depends(get_db)):
-    """
-    Dynamically computes UEBA risky user rankings, anomaly totals,
-    and historical score trajectories from database events and sliding window.
-    """
-    baseline_users = {
-        "eve.patel": {"dept": "Finance Admin", "host": "laptop-mgmt-05.corp", "base_score": 97, "base_anomalies": 8, "trend": [45, 62, 74, 88, 97]},
-        "alice.chen": {"dept": "DevOps Engineering", "host": "workstation-14.corp", "base_score": 94, "base_anomalies": 6, "trend": [20, 42, 60, 81, 94]},
-        "svc_account": {"dept": "Cloud Service Principal", "host": "server-api-01.corp", "base_score": 82, "base_anomalies": 5, "trend": [15, 30, 50, 68, 82]},
-        "svc_backup": {"dept": "Storage Infrastructure", "host": "srv-finance-02", "base_score": 78, "base_anomalies": 4, "trend": [30, 48, 55, 67, 78]},
-        "bob.miller": {"dept": "Core Platform", "host": "dev-box-03", "base_score": 55, "base_anomalies": 3, "trend": [25, 35, 42, 49, 55]},
-        "frank.wu": {"dept": "Corporate Operations", "host": "server-file-03.corp", "base_score": 44, "base_anomalies": 2, "trend": [12, 18, 28, 38, 44]},
-    }
-
+def get_risky_users():
     user_stats = {}
-    for u, b in baseline_users.items():
-        user_stats[u] = {
-            "user": u,
-            "department": b["dept"],
-            "host": b["host"],
-            "risk_score": b["base_score"],
-            "anomalies_count": b["base_anomalies"],
-            "trend": list(b["trend"]),
-            "last_active": "Recent",
-        }
 
-    # Query DB events dynamically
-    try:
-        db_events = db.query(Event).order_by(desc(Event.timestamp)).limit(200).all()
-    except Exception:
-        db_events = []
+    # 1. Process live incidents in chronological order (oldest to newest for trend calculation)
+    sorted_incidents = list(reversed(_LIVE_INCIDENTS))
 
-    all_events = list(db_events) + list(_EVENT_WINDOW)
-
-    for ev in all_events:
-        u = getattr(ev, "user_id", None) or (ev.get("user_id") if isinstance(ev, dict) else None)
-        if not u or u == "None":
+    for inc in sorted_incidents:
+        u = inc.get("user") or inc.get("user_id")
+        if not u or str(u).lower() in ("unknown", "none"):
             continue
-        u = str(u)
-        sev = getattr(ev, "severity", 1) or 1
-        host = getattr(ev, "host_id", None) or (ev.get("host_id") if isinstance(ev, dict) else "workstation-1")
+
+        risk_raw = inc.get("risk_score", 0.5)
+        risk_100 = int(risk_raw * 100) if risk_raw <= 1.0 else int(risk_raw)
+        host = inc.get("host") or inc.get("host_id") or "endpoint"
+        severity = inc.get("severity", "medium")
 
         if u not in user_stats:
-            score = min(99, max(25, int(sev * 20)))
             user_stats[u] = {
                 "user": u,
-                "department": "Corporate Identity",
+                "department": "Privileged Identity" if str(u).lower() in ("admin", "root", "system", "administrator") else "Enterprise User Account",
                 "host": host,
-                "risk_score": score,
+                "risk_scores": [risk_100],
                 "anomalies_count": 1,
-                "trend": [15, 25, 35, int(sev * 15), score],
+                "severity": severity,
                 "last_active": "Just now",
             }
         else:
             user_stats[u]["anomalies_count"] += 1
-            boost = int(sev * 5)
-            new_score = min(99, user_stats[u]["risk_score"] + boost)
-            user_stats[u]["risk_score"] = new_score
-            user_stats[u]["trend"] = (user_stats[u]["trend"][1:] + [new_score])[-5:]
-            user_stats[u]["last_active"] = "Just now"
+            user_stats[u]["risk_scores"].append(risk_100)
+            if host:
+                user_stats[u]["host"] = host
+            if severity in ("critical", "high"):
+                user_stats[u]["severity"] = severity
 
-    results = list(user_stats.values())
-    for item in results:
-        r = item["risk_score"]
-        item["severity"] = "critical" if r >= 80 else "high" if r >= 65 else "medium" if r >= 40 else "low"
+    # Compute realistic composite risk score & authentic trend
+    for u, data in user_stats.items():
+        scores = data.pop("risk_scores")
+        # Real chronological trend
+        data["trend"] = scores[-5:] if len(scores) >= 2 else [max(15, scores[0] - 25), max(25, scores[0] - 10), scores[0]]
+        # Composite score: Peak incident risk + repeat offense velocity factor (4 pts per additional confirmed incident, max 100)
+        peak_risk = max(scores)
+        repeat_penalty = min(15, (len(scores) - 1) * 4)
+        data["risk_score"] = min(100, peak_risk + repeat_penalty)
 
-    results.sort(key=lambda x: x["risk_score"], reverse=True)
-    return results[:8]
+    # 2. Process event window for any baseline or non-incident user accounts
+    for ev in _EVENT_WINDOW:
+        u = getattr(ev, "user_id", None) or (ev.get("user_id") if isinstance(ev, dict) else None)
+        if not u or str(u).lower() in ("unknown", "none") or u in user_stats:
+            continue
+        host = getattr(ev, "host_id", None) or (ev.get("host_id") if isinstance(ev, dict) else "endpoint")
+        user_stats[u] = {
+            "user": u,
+            "department": "Active Client Account",
+            "host": host,
+            "risk_score": 15,
+            "anomalies_count": 0,
+            "severity": "low",
+            "trend": [10, 15, 15],
+            "last_active": "Recent",
+        }
+
+    return sorted(user_stats.values(), key=lambda x: x["risk_score"], reverse=True)
+
+
+@app.get("/analytics/devices")
+def get_connected_devices():
+    import socket
+    local_host = socket.gethostname()
+
+    # Determine local server IP dynamically
+    server_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        server_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    device_map = {}
+
+    # 1. Primary SENTRY Server Host
+    device_map[local_host] = {
+        "host": local_host,
+        "role": "SENTRY Primary Server (Controller)",
+        "ip": server_ip,
+        "status": "nominal",
+        "last_seen": "Active Controller",
+        "event_count": 0,
+        "max_risk": 0,
+    }
+
+    # 2. Add dynamically connected client devices
+    for ip, cdata in _CONNECTED_CLIENTS.items():
+        h = cdata.get("host") or f"client-{ip}"
+        if h not in device_map:
+            device_map[h] = {
+                "host": h,
+                "role": cdata.get("role", "Connected Endpoint"),
+                "ip": ip,
+                "status": "nominal",
+                "last_seen": cdata.get("last_seen", "Active Client"),
+                "event_count": 0,
+                "max_risk": 0,
+            }
+
+    # 3. Process live incidents to assign events and risk to the ACTUAL host
+    for inc in _LIVE_INCIDENTS:
+        h = inc.get("host") or inc.get("host_id")
+        if not h:
+            continue
+        risk_raw = inc.get("risk_score", 0.5)
+        risk_100 = int(risk_raw * 100) if risk_raw <= 1.0 else int(risk_raw)
+        src_ip = inc.get("src_ip") or inc.get("ip") or "Active Telemetry"
+
+        if h not in device_map:
+            device_map[h] = {
+                "host": h,
+                "role": "Monitored Host",
+                "ip": src_ip,
+                "status": "compromised" if risk_100 >= 60 else "investigating" if risk_100 >= 35 else "nominal",
+                "last_seen": "Telemetry Live",
+                "event_count": 1,
+                "max_risk": risk_100,
+            }
+        else:
+            device_map[h]["event_count"] += 1
+            device_map[h]["max_risk"] = max(device_map[h]["max_risk"], risk_100)
+            if risk_100 >= 60:
+                device_map[h]["status"] = "compromised"
+            elif risk_100 >= 35 and device_map[h]["status"] != "compromised":
+                device_map[h]["status"] = "investigating"
+
+    # 4. Count raw events in window for nominal devices
+    for ev in _EVENT_WINDOW:
+        h = getattr(ev, "host_id", None) or (ev.get("host_id") if isinstance(ev, dict) else None)
+        if h and h in device_map and device_map[h]["max_risk"] == 0:
+            device_map[h]["event_count"] += 1
+
+    return list(device_map.values())
 
 
 @app.get("/analytics/automation-roi")
@@ -1274,6 +1515,19 @@ async def lookup_ioc(payload: dict):
 @app.websocket("/ws")
 @app.websocket("/ws/incidents")
 async def websocket_endpoint(websocket: WebSocket):
+    client_ip = websocket.client.host if websocket.client else "unknown"
+    if client_ip not in ("127.0.0.1", "localhost", "::1", "unknown"):
+        import socket
+        try:
+            resolved_host = socket.gethostbyaddr(client_ip)[0]
+        except Exception:
+            resolved_host = f"client-{client_ip}"
+        _CONNECTED_CLIENTS[client_ip] = {
+            "host": resolved_host,
+            "ip": client_ip,
+            "role": "Connected Endpoint",
+            "last_seen": "Active WebSocket",
+        }
     await manager.connect(websocket)
     try:
         while True:
