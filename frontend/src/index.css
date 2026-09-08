@@ -1,0 +1,152 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: #070b14;
+    color: #e2e8f0;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0d1117;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .glass-card {
+    background: rgba(17, 24, 39, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.75rem;
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-200;
+  }
+
+  .glass-card-hover:hover {
+    border-color: rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.1);
+    transform: translateY(-1px);
+  }
+
+  /* Severity badges */
+  .badge-critical {
+    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    background: rgba(69, 10, 10, 0.8);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+  }
+
+  .badge-high {
+    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    background: rgba(67, 20, 7, 0.8);
+    color: #fdba74;
+    border: 1px solid rgba(249, 115, 22, 0.4);
+  }
+
+  .badge-medium {
+    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    background: rgba(66, 32, 6, 0.8);
+    color: #fde047;
+    border: 1px solid rgba(234, 179, 8, 0.4);
+  }
+
+  .badge-low {
+    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    background: rgba(30, 41, 59, 0.8);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+  }
+
+  /* MITRE tags */
+  .mitre-tag {
+    @apply px-2 py-0.5 text-xs font-mono rounded;
+    background: rgba(30, 27, 75, 0.8);
+    color: #a5b4fc;
+    border: 1px solid rgba(67, 56, 202, 0.4);
+  }
+
+  /* Dot pulse indicator */
+  .live-dot {
+    @apply w-2 h-2 rounded-full bg-green-400;
+    animation: livePulse 1.5s ease-in-out infinite;
+  }
+
+  /* Cyber glow text */
+  .cyber-text {
+    color: #22d3ee;
+    text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+  }
+
+  /* Table row hover */
+  .table-row-hover {
+    @apply transition-all duration-150 cursor-pointer;
+  }
+
+  .table-row-hover:hover {
+    background: rgba(6, 182, 212, 0.05);
+  }
+
+  /* Risk score bar */
+  .risk-bar-track {
+    @apply w-full h-2 rounded-full overflow-hidden;
+    background: rgba(30, 41, 59, 0.8);
+  }
+
+  .risk-bar-fill {
+    @apply h-full rounded-full transition-all duration-700;
+  }
+}
+
+@layer utilities {
+  .text-shadow-cyber {
+    text-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+  }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+@keyframes slideInDown {
+  0% { opacity: 0; transform: translateY(-12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in-new {
+  animation: slideInDown 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}

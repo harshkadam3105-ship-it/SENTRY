@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: sentry_pass
+      POSTGRES_DB: sentry_db
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - sentry-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://sentry:sentry_pass@db:5432/sentry_db
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sentry-net
+    restart: unless-stopped
+
+  demo-app:
+    build:
+      context: ./demo-app
+      dockerfile: Dockerfile
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - sentry-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://backend:8000
+      VITE_WS_URL: ws://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - sentry-net
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+networks:
+  sentry-net:
+    driver: bridge
+
+volumes:
+  pg_data:
