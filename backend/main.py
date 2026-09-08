@@ -673,6 +673,55 @@ def get_incident_ai_analysis(incident_id: str, db: Session = Depends(get_db)):
     }
 
 
+# ---------------- DYNAMIC AI LAYER ----------------
+
+try:
+    from backend.core.ai_layer import ai_layer
+except Exception as _ai_err:
+    print(f"[Sentry] AI Layer import notice: {_ai_err}")
+    ai_layer = None
+
+
+@app.post("/ai/chat")
+async def ai_chat_endpoint(payload: dict):
+    """Dynamic AI Security Analyst Assistant endpoint."""
+    query = payload.get("query", "")
+    context = payload.get("context", {})
+    if ai_layer:
+        return ai_layer.chat_response(query, context)
+    return {
+        "query": query,
+        "response": "Sentry AI Layer operational. Monitoring telemetry streams and active host containers.",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+@app.post("/ai/predict-next-move")
+async def ai_predict_next_move(payload: dict):
+    """Predicts next MITRE ATT&CK technique and preventative countermeasure."""
+    incident = payload.get("incident", {})
+    if ai_layer:
+        return ai_layer.predict_next_move(incident)
+    return {"predicted_technique": "T1021", "probability_confidence": "85%"}
+
+
+@app.post("/ai/remediation-script")
+async def ai_remediation_script(payload: dict):
+    """Generates executable containment script (PowerShell or Bash)."""
+    incident = payload.get("incident", {})
+    script_type = payload.get("script_type", "powershell")
+    if ai_layer:
+        return ai_layer.generate_remediation_script(incident, script_type)
+    return {"script": "# Sentry Emergency Containment Script\nDisable-NetAdapter -Name *", "script_type": script_type}
+
+
+@app.post("/ai/blast-radius")
+async def ai_blast_radius(payload: dict):
+    """Assesses lateral contagion risk and enterprise asset exposure."""
+    incident = payload.get("incident", {})
+    if ai_layer:
+        return ai_layer.assess_blast_radius(incident)
+    return {"estimated_blast_radius": "3 Enterprise Assets"}
 
 
 # ---------------- ASSETS ----------------

@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import SOCOverview from './pages/SOCOverview'
 import IncidentDetail from './pages/IncidentDetail'
+import AiCopilotModal from './components/AiCopilotModal'
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
         {/* Catch-all → back to overview */}
         <Route path="*" element={<SOCOverview />} />
       </Routes>
+      <AiCopilotModal />
     </HashRouter>
   )
 }

@@ -284,6 +284,59 @@ export async function getIncidentAiAnalysis(incidentId) {
   return null
 }
 
+/**
+ * Send natural language inquiry to Sentry AI Security Assistant.
+ */
+export async function askAiCopilot(query, context = {}) {
+  const response = await fetch(`${API_BASE}/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, context }),
+  })
+  if (!response.ok) throw new Error('AI Assistant request failed')
+  return response.json()
+}
+
+/**
+ * Predict next adversary MITRE ATT&CK technique and preventative defense.
+ */
+export async function predictNextMove(incident) {
+  const response = await fetch(`${API_BASE}/ai/predict-next-move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ incident }),
+  })
+  if (!response.ok) throw new Error('Failed to predict adversary move')
+  return response.json()
+}
+
+/**
+ * Generate automated PowerShell or Bash containment script.
+ */
+export async function generateRemediationScript(incident, scriptType = 'powershell') {
+  const response = await fetch(`${API_BASE}/ai/remediation-script`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ incident, script_type: scriptType }),
+  })
+  if (!response.ok) throw new Error('Failed to generate script')
+  return response.json()
+}
+
+/**
+ * Assess lateral contamination and entity blast radius.
+ */
+export async function getBlastRadius(incident) {
+  const response = await fetch(`${API_BASE}/ai/blast-radius`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ incident }),
+  })
+  if (!response.ok) throw new Error('Failed to assess blast radius')
+  return response.json()
+}
+
+
 
 /**
  * Generates an enterprise-standard, forensic-grade SOC Incident Dossier object.
