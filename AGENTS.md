@@ -76,11 +76,12 @@ frontend/
     │   ├── SeverityDonutChart.jsx # ⭐ NEW: Responsive radial SVG donut chart with center threat count
     │   ├── RiskyUsersPanel.jsx  # ⭐ NEW: UEBA risky identity ranking with SVG sparklines & 1-click revoke
     │   ├── RemediationConsole.jsx # ⭐ NEW: Multi-tab SOAR playbook engine, immediate actions & audit log
+    │   ├── AiCopilotModal.jsx   # ⭐ NEW: Global interactive AI defense assistant drawer (Cmd+K)
     │   ├── RiskScoreBreakdown.jsx # 4-component risk decomposition meters (Anomaly, Rule, Severity, Correlation)
     │   └── EvidenceTimeline.jsx # Chronological attack sequence with MITRE tags and anomaly weights
     └── pages/
         ├── SOCOverview.jsx      # Main dashboard: metrics bar, charts, incident table & tabbed right panel
-        └── IncidentDetail.jsx   # Deep-dive screen: header card, SOAR console, dossier export & evidence
+        └── IncidentDetail.jsx   # Deep-dive screen: header card, AI Copilot, SOAR console, dossier & evidence
 ```
 
 ---
@@ -167,6 +168,23 @@ frontend/
   - MITRE Techniques: Unifies arrays of string codes (`"T1110"`) and nested objects (`{ mitre_id: "T1110", technique: "Brute Force" }`).
   - Correlated Events: Safeguards `null` / `undefined` into empty arrays `[]`.
 
+### 8. Dynamic AI Defense Copilot (`AiCopilotModal.jsx` + `backend/core/ai_layer.py`)
+- **Global Availability:** Accessible dashboard-wide via glowing bottom-right floating trigger button or `Cmd+K` / `Ctrl+K`.
+- **Context-Aware Reasoning:** Ingests active incident and fleet telemetry context.
+- **1-Click High-Impact Prompts:**
+  - ⚡ *Blast Radius Analysis:* Computes enterprise host contagion and identity exposure scope.
+  - 🎯 *Predict Next Move:* Probabilistic forecasting of adversary's next MITRE technique based on Kill Chain transitions.
+  - 📜 *Automated Script Generation:* Generates executable PowerShell or Bash zero-trust containment scripts.
+  - 🔍 *Root Cause Explainer:* Translates complex Isolation Forest anomaly weights into plain English threat intelligence.
+
+### 9. AI Investigation Copilot Card (`IncidentDetail.jsx` + `ai_copilot.py`)
+- **Location:** Embedded in the **Incident Detail** screen right above the MITRE breakdown.
+- **Components:**
+  - **Model Attribution & Confidence:** Displays active model (`IsolationForest-v2.1 + RuleCorrelationNet`) with dynamic confidence gauge (`98.3%`).
+  - **Predicted Kill Chain Phase:** 6-stage pip indicator highlighting current attack phase (e.g. *Step 3 of 6: Credential Access & Privilege Escalation*).
+  - **Top Anomaly Drivers:** Visual cards displaying exact feature deviation multipliers (`+104.0x vs baseline`, `+88.0x`, etc.) and critical impact badges.
+  - **Threat Actor Hypothesis:** AI-synthesized root-cause narrative.
+
 ---
 
 ## Backend API Endpoints (Quick Reference)
@@ -177,8 +195,13 @@ frontend/
 | `GET` | `/incidents` | List all correlated incidents |
 | `GET` | `/incidents/{id}` | Fetch single incident detail |
 | `GET` | `/incidents/{id}/dossier` | Fetch formatted JSON forensic incident dossier |
+| `GET` | `/incidents/{id}/ai-analysis` | Fetch live AI feature attribution & Kill Chain analysis |
+| `POST`| `/ai/chat` | Interactive natural language cybersecurity reasoning chat |
+| `POST`| `/ai/predict-next-move` | Probabilistic forecasting of adversary's next MITRE move |
+| `POST`| `/ai/remediation-script` | Dynamic PowerShell / Bash containment script generator |
+| `POST`| `/ai/blast-radius` | Enterprise contagion & lateral blast radius assessment |
 | `PATCH`| `/incidents/{id}/status` | Update incident status (`open`/`investigating`/`contained`/`resolved`) |
-| `GET` | `/analytics/risky-users` | Fetch UEBA identity risk rankings with sparkline trend data |
+| `GET` | `/analytics/risky-users` | Fetch UEBA identity risk rankings with dynamic sparklines |
 | `POST`| `/actions/isolate-host` | Quarantine host network bridge |
 | `POST`| `/actions/revoke-user` | Invalidate user active sessions and OAuth tokens |
 | `POST`| `/actions/block-c2` | Deploy perimeter firewall IP block rule |
