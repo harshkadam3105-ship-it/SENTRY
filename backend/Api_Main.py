@@ -44,4 +44,3 @@ def ingest_event(event: EventIn, db: Session = Depends(get_db)):
     db.add(db_event)
     db.commit()
     return {"status": "ok", "event_id": str(event.event_id)}
-explain code
