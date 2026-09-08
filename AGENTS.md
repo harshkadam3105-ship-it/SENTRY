@@ -71,17 +71,21 @@ frontend/
     │   ├── SeverityBadge.jsx    # Severity pill badge (critical/high/medium/low) with critical radar pulse
     │   ├── IncidentTable.jsx    # Sortable incident table with inline risk meter and new incident flash
     │   ├── LiveFeedPanel.jsx    # Auto-scrolling real-time telemetry feed with event type icons
-    │   ├── SoarMetricsBar.jsx   # ⭐ NEW: Executive SOAR automation ROI strip (MTTD, MTTR, defense rate)
-    │   ├── AttackTrendChart.jsx # ⭐ NEW: 24h threat velocity SVG area graph with dual-metric toggle
-    │   ├── SeverityDonutChart.jsx # ⭐ NEW: Responsive radial SVG donut chart with center threat count
-    │   ├── RiskyUsersPanel.jsx  # ⭐ NEW: UEBA risky identity ranking with SVG sparklines & 1-click revoke
-    │   ├── RemediationConsole.jsx # ⭐ NEW: Multi-tab SOAR playbook engine, immediate actions & audit log
+    │   ├── SoarMetricsBar.jsx   # Executive SOAR automation ROI strip (MTTD, MTTR, defense rate)
+    │   ├── AttackTrendChart.jsx # 24h threat velocity SVG area graph with dual-metric toggle
+    │   ├── SeverityDonutChart.jsx # Responsive radial SVG donut chart with center threat count
+    │   ├── RiskyUsersPanel.jsx  # UEBA risky identity ranking with SVG sparklines & 1-click revoke
+    │   ├── RemediationConsole.jsx # ⭐ ENHANCED: 10-control SOAR engine, 5 animated playbooks & audit ledger
+    │   ├── BlastRadiusGraph.jsx # ⭐ NEW: Interactive cyber topology & entity blast radius graph
+    │   ├── SoarRoiDashboard.jsx # ⭐ NEW: CISO executive ROI dashboard (Siemplify gauge, dwell age bars)
+    │   ├── IocLookupModal.jsx   # ⭐ NEW: Live multi-engine threat intelligence & 1-click firewall block
     │   ├── RiskScoreBreakdown.jsx # 4-component risk decomposition meters (Anomaly, Rule, Severity, Correlation)
     │   └── EvidenceTimeline.jsx # Chronological attack sequence with MITRE tags and anomaly weights
     └── pages/
-        ├── SOCOverview.jsx      # Main dashboard: metrics bar, charts, incident table & tabbed right panel
-        └── IncidentDetail.jsx   # Deep-dive screen: header card, SOAR console, dossier export & evidence
+        ├── SOCOverview.jsx      # Main dashboard: view mode switcher (Operations vs CISO ROI), metrics & tables
+        └── IncidentDetail.jsx   # Deep-dive screen: blast radius graph, 10-control SOAR console, dossier & evidence
 ```
+
 
 ---
 
@@ -177,14 +181,24 @@ frontend/
 | `GET` | `/incidents` | List all correlated incidents |
 | `GET` | `/incidents/{id}` | Fetch single incident detail |
 | `GET` | `/incidents/{id}/dossier` | Fetch formatted JSON forensic incident dossier |
+| `GET` | `/incidents/{id}/ai-analysis` | Fetch ML feature attribution & kill chain progression |
 | `PATCH`| `/incidents/{id}/status` | Update incident status (`open`/`investigating`/`contained`/`resolved`) |
 | `GET` | `/analytics/risky-users` | Fetch UEBA identity risk rankings with sparkline trend data |
+| `GET` | `/analytics/automation-roi` | Fetch executive SOAR ROI, dwell times, and playbook metrics |
+| `POST`| `/analytics/ioc-lookup` | Multi-engine threat intel reputation query |
 | `POST`| `/actions/isolate-host` | Quarantine host network bridge |
+| `POST`| `/actions/restore-host` | Restore host production network connectivity |
+| `POST`| `/actions/kill-process` | Terminate suspicious process PID and child thread tree |
 | `POST`| `/actions/revoke-user` | Invalidate user active sessions and OAuth tokens |
-| `POST`| `/actions/block-c2` | Deploy perimeter firewall IP block rule |
-| `POST`| `/actions/capture-forensics` | Trigger volatile memory and socket dump |
+| `POST`| `/actions/enforce-mfa` | Enforce step-up FIDO2 / hardware MFA token challenge |
+| `POST`| `/actions/rotate-credentials` | Revoke and reissue SSH keys, Kerberos TGT, and API secrets |
+| `POST`| `/actions/block-ip` | Deploy perimeter firewall null-route IP drop rule |
+| `POST`| `/actions/capture-forensics` | Trigger volatile memory (512 MB) and socket dump |
+| `POST`| `/actions/deploy-deception` | Plant canary honeytokens in memory / LSASS |
+| `POST`| `/actions/rollback-files` | Restore Volume Shadow Copies (VSS) post-encryption |
 | `POST`| `/actions/trigger-playbook` | Execute automated multi-step SOAR containment playbook |
 | `WS`  | `/ws/incidents` | Real-time WebSocket stream for incidents, telemetry, and actions |
+
 
 ---
 
