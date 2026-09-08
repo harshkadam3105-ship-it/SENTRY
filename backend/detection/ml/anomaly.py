@@ -1,4 +1,5 @@
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
 import numpy as np
 
 
@@ -9,29 +10,54 @@ class AnomalyDetector:
             contamination=0.1,
             random_state=42
         )
+        self.scaler = StandardScaler()
         self.trained = False
+        self.baseline_scores = None
 
     def train(self, baseline_data):
         """
-        Train on normal/expected behavior.
+        Train Isolation Forest on normal/expected behavior.
         """
-        self.model.fit(np.array(baseline_data))
+        baseline_array = np.asarray(baseline_data, dtype=float)
+
+        if baseline_array.ndim != 2 or len(baseline_array) < 2:
+            raise ValueError(
+                "baseline_data must contain at least two feature vectors."
+            )
+
+        scaled_baseline = self.scaler.fit_transform(baseline_array)
+
+        self.model.fit(scaled_baseline)
+
+        self.baseline_scores = self.model.decision_function(
+            scaled_baseline
+        )
+
         self.trained = True
 
     def score(self, features):
         """
-        Return anomaly score from 0-100.
-        Higher = more anomalous.
+        Return an anomaly score from 0-100.
+        Higher values indicate greater deviation from the learned baseline.
         """
         if not self.trained:
             raise RuntimeError("Model must be trained before scoring.")
 
-        features = np.array(features).reshape(1, -1)
+        features = np.asarray(features, dtype=float).reshape(1, -1)
+        scaled_features = self.scaler.transform(features)
 
-        raw_score = self.model.decision_function(features)[0]
+        raw_score = self.model.decision_function(scaled_features)[0]
 
-        # Convert Isolation Forest score into 0-100 anomaly score
-        anomaly_score = 50 - (raw_score * 50)
+        baseline_min = float(np.min(self.baseline_scores))
+        baseline_max = float(np.max(self.baseline_scores))
+
+        if baseline_max == baseline_min:
+            anomaly_score = 0.0
+        else:
+            anomaly_score = (
+                (baseline_max - raw_score)
+                / (baseline_max - baseline_min)
+            ) * 100
 
         return round(float(np.clip(anomaly_score, 0, 100)), 2)
 
@@ -42,6 +68,7 @@ class AnomalyDetector:
         if not self.trained:
             raise RuntimeError("Model must be trained before prediction.")
 
-        features = np.array(features).reshape(1, -1)
+        features = np.asarray(features, dtype=float).reshape(1, -1)
+        scaled_features = self.scaler.transform(features)
 
-        return int(self.model.predict(features)[0])
+        return int(self.model.predict(scaled_features)[0])
