@@ -1,29 +1,3 @@
-from fastapi import FastAPI
-
-from backend.api.events import router as events_router
-from backend.database.connection import Base, engine
-from backend.models import Asset, Event, Incident
-
-
-app = FastAPI(
-    title="SENTRY API",
-    description="AI-powered multi-signal cyber threat detection backend",
-    version="1.0.0",
-)
-
-
-Base.metadata.create_all(bind=engine)
-
-
-app.include_router(events_router)
-
-
-@app.get("/health")
-def health_check():
-    return {
-        "status": "ok",
-        "service": "sentry-backend",
-    }
 import sys
 import os
 import random
@@ -37,12 +11,21 @@ from sqlalchemy import desc
 
 # Add backend/ dir so local submodules resolve (db, core, etc.)
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _BACKEND_DIR)
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 # Add SENTRY root so teammate absolute imports (from backend.xxx) resolve
 _SENTRY_ROOT = os.path.dirname(_BACKEND_DIR)
 if _SENTRY_ROOT not in sys.path:
     sys.path.insert(0, _SENTRY_ROOT)
+
+try:
+    from backend.api.events import router as events_router
+    _EVENTS_ROUTER_OK = True
+except Exception as _e:
+    events_router = None
+    _EVENTS_ROUTER_OK = False
+    print(f"[Sentry] Events router unavailable: {_e}")
 
 from db.schema import EventIn, HostActionRequest
 from db.db_models import Base, Event, Incident, Asset
@@ -140,6 +123,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if _EVENTS_ROUTER_OK and events_router:
+    app.include_router(events_router)
+
 
 # Seed fallback incidents if database has not been populated yet by correlation engine
 SEED_INCIDENTS = [
