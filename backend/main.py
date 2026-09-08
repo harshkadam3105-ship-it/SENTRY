@@ -457,6 +457,30 @@ async def ingest_event(event: EventIn, db: Session = Depends(get_db)):
     }
 
 
+@app.post("/ingest")
+async def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
+    """Bridge legacy trigger.py and external payloads into standard EventIn pipeline."""
+    from uuid import uuid4
+    from datetime import datetime
+    event_in = EventIn(
+        event_id=uuid4(),
+        timestamp=datetime.utcnow(),
+        source_type=payload.get("source_type", payload.get("source", "endpoint")),
+        host_id=payload.get("host_id", payload.get("host", "workstation-14.corp")),
+        user_id=payload.get("user_id", payload.get("user", "target.user")),
+        src_ip=payload.get("src_ip", "10.0.0.55"),
+        dst_ip=payload.get("dst_ip", "192.168.1.14"),
+        src_port=payload.get("src_port", 22),
+        dst_port=payload.get("dst_port", 22),
+        protocol=payload.get("protocol", "TCP"),
+        event_type=payload.get("event_type", "attack_indicator"),
+        severity=int(payload.get("severity", 4)),
+        features=payload.get("features", {"failed_logins": 8, "requests_per_minute": 150, "error_rate": 0.3}),
+        raw_data=payload.get("raw_data", {"log": payload.get("detail", "Attack payload triggered")}),
+    )
+    return await ingest_event(event_in, db)
+
+
 @app.get("/events")
 def list_events(limit: int = 100, db: Session = Depends(get_db)):
     try:
