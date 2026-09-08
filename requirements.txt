@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+sqlalchemy==2.0.52
+numpy
+scikit-learn
+pydantic
