@@ -24,12 +24,67 @@ class IncidentGenerator:
         "Suspicious Process": {
             "mitre_id": "T1059",
             "technique": "Command and Scripting Interpreter",
-            "confidence": 0.80,
+            "confidence": 0.85,
         },
         "Unusual Outbound Activity": {
             "mitre_id": "T1071",
             "technique": "Application Layer Protocol",
             "confidence": 0.75,
+        },
+        "API Abuse": {
+            "mitre_id": "T1071",
+            "technique": "Application Layer Protocol (API)",
+            "confidence": 0.80,
+        },
+        "Privilege Escalation": {
+            "mitre_id": "T1548",
+            "technique": "Abuse Elevation Control Mechanism",
+            "confidence": 0.90,
+        },
+        "Suspicious Parent Process": {
+            "mitre_id": "T1055",
+            "technique": "Process Injection / Execution",
+            "confidence": 0.85,
+        },
+        "Suspicious Login Source": {
+            "mitre_id": "T1078",
+            "technique": "Valid Accounts (Untrusted Source)",
+            "confidence": 0.85,
+        },
+        "Suspicious File Activity": {
+            "mitre_id": "T1083",
+            "technique": "File & Directory Discovery / Modification",
+            "confidence": 0.80,
+        },
+        "Network Scanning": {
+            "mitre_id": "T1046",
+            "technique": "Network Service Discovery",
+            "confidence": 0.85,
+        },
+        "Credential Dumping": {
+            "mitre_id": "T1003",
+            "technique": "OS Credential Dumping",
+            "confidence": 0.95,
+        },
+        "Data Exfiltration": {
+            "mitre_id": "T1048",
+            "technique": "Exfiltration Over Alternative Protocol",
+            "confidence": 0.85,
+        },
+        "Persistence Mechanism": {
+            "mitre_id": "T1053",
+            "technique": "Scheduled Task / Job",
+            "confidence": 0.80,
+        },
+        "Defense Evasion": {
+            "mitre_id": "T1070",
+            "technique": "Indicator Removal / Log Tampering",
+            "confidence": 0.85,
+        },
+        "Lateral Movement": {
+            "mitre_id": "T1021",
+            "technique": "Remote Services",
+            "confidence": 0.85,
         },
     }
 
@@ -89,6 +144,18 @@ class IncidentGenerator:
             risk_score,
         )
 
+        reasons = []
+        for result in detection_results:
+            for reason in result.get("rule_reasons", []):
+                if reason and reason not in reasons:
+                    reasons.append(reason)
+
+        explanation = (
+            " • ".join(reasons)
+            if reasons
+            else f"Behavioral anomaly detected with composite risk score of {risk_score:.0f}/100."
+        )
+
         return {
             "incident_id": str(uuid4()),
             "title": title,
@@ -96,6 +163,8 @@ class IncidentGenerator:
             "risk_score": round(float(risk_score), 2),
             "confidence": confidence,
             "status": "open",
+            "explanation": explanation,
+            "description": explanation,
             "host_id": host_id,
             "user_id": user_id,
             "event_ids": event_ids,
@@ -146,10 +215,43 @@ class IncidentGenerator:
             return "Brute Force Attack Detected"
 
         if "Suspicious Process" in rule_tags:
-            return "Suspicious Process Activity"
+            return "Suspicious Process Execution"
 
         if "Unusual Outbound Activity" in rule_tags:
             return "Unusual Outbound Network Activity"
+
+        if "Privilege Escalation" in rule_tags:
+            return "Privilege Escalation Detected"
+
+        if "Suspicious Parent Process" in rule_tags:
+            return "Suspicious Parent-Child Process Detected"
+
+        if "Suspicious Login Source" in rule_tags:
+            return "Suspicious Login Source Detected"
+
+        if "Suspicious File Activity" in rule_tags:
+            return "Mass / Suspicious File Activity"
+
+        if "Network Scanning" in rule_tags:
+            return "Network Port Scanning Detected"
+
+        if "API Abuse" in rule_tags:
+            return "API Credential Abuse Detected"
+
+        if "Credential Dumping" in rule_tags:
+            return "Credential Dumping Attack Detected"
+
+        if "Data Exfiltration" in rule_tags:
+            return "Large-Scale Data Exfiltration Activity"
+
+        if "Persistence Mechanism" in rule_tags:
+            return "Host Persistence Mechanism Established"
+
+        if "Defense Evasion" in rule_tags:
+            return "Defense Evasion / Log Tampering Detected"
+
+        if "Lateral Movement" in rule_tags:
+            return "Internal Lateral Movement Activity"
 
         if rule_tags:
             return f"Suspicious Activity: {rule_tags[0]}"

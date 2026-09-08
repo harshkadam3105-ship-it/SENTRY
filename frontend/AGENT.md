@@ -146,12 +146,12 @@ frontend/
 - Merges raw streamed WebSocket events with correlated incident events, deduplicated by `event_id`.
 - Automatically scrolls to newest events at the top.
 - Visual icon mapping:
-  - `failed_login` / `auth_failure` → `🔑`
-  - `privilege_escalation` → `👑`
-  - `data_exfiltration` → `📤`
-  - `credential_access` → `💾`
-  - `normal_login` → `🟢` (Clean green baseline)
-  - Generic anomaly → `⚠️`
+  - `failed_login` / `auth_failure` &rarr; `🔑`
+  - `privilege_escalation` &rarr; `👑`
+  - `data_exfiltration` &rarr; `📤`
+  - `credential_access` &rarr; `💾`
+  - `normal_login` &rarr; `🟢` (Clean green baseline)
+  - Generic anomaly &rarr; `⚠️`
 
 ### 4.6. `AttackTrendChart.jsx` (24h Velocity SVG Area Graph)
 - Computes real 24-hour hourly buckets (`00:00` to `23:00`) from actual incident timestamps.

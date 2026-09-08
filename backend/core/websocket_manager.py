@@ -18,13 +18,15 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict):
         dead_connections = []
-        for connection in self.active_connections:
+        clients = list(self.active_connections)
+        for connection in clients:
             try:
                 await connection.send_json(message)
             except Exception:
                 dead_connections.append(connection)
         for dead in dead_connections:
             self.disconnect(dead)
+        print(f"[WebSocket] Broadcast '{message.get('type')}' to {len(clients) - len(dead_connections)} client(s)")
 
 
 manager = ConnectionManager()
