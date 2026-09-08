@@ -242,23 +242,13 @@ export function resolveMitreTechnique(input, fallbackIndex = 0) {
 }
 
 export function openMitreUrl(url, e) {
-  if (e) {
-    if (typeof e.stopPropagation === 'function') e.stopPropagation()
-    if (typeof e.preventDefault === 'function') e.preventDefault()
+  if (e && typeof e.stopPropagation === 'function') {
+    e.stopPropagation()
   }
 
-  if (typeof window !== 'undefined') {
+  // If invoked programmatically without a native <a> click:
+  if (!e && typeof window !== 'undefined') {
     const targetUrl = url || 'https://attack.mitre.org/'
-    try {
-      const a = document.createElement('a')
-      a.href = targetUrl
-      a.target = '_blank'
-      a.rel = 'noopener noreferrer'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    } catch {
-      window.open(targetUrl, '_blank', 'noopener,noreferrer')
-    }
+    window.open(targetUrl, '_blank', 'noopener,noreferrer')
   }
 }
