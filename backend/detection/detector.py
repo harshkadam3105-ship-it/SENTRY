@@ -29,21 +29,28 @@ class DetectionEngine:
 
     def detect(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Run both rule-based and ML detection on an event.
+        Run both rule-based and ML anomaly detection on an event.
         """
 
-        # 1. Extract features
+        # Extract features once
         features = self.feature_extractor.extract(event)
-        vector = self.feature_extractor.to_vector(event)
 
-        # 2. Run deterministic rules
+        feature_order = (
+            self.feature_extractor.NETWORK_FEATURES
+            + self.feature_extractor.ENDPOINT_FEATURES
+            + self.feature_extractor.APPLICATION_FEATURES
+            + self.feature_extractor.AUTH_FEATURES
+        )
+
+        vector = [features[name] for name in feature_order]
+
+        # Run deterministic rules
         rule_result = self.rule_engine.evaluate(event)
 
-        # 3. Run ML anomaly detection
+        # Run ML anomaly detection
         anomaly_score = self.anomaly_detector.score(vector)
         prediction = self.anomaly_detector.predict(vector)
 
-        # 4. Combine results
         is_anomaly = prediction == -1
 
         return {

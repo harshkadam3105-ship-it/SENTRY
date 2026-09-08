@@ -35,7 +35,6 @@ class RuleEngine:
 
     def brute_force_rule(self, event: Dict[str, Any]):
         features = event.get("features", {})
-
         failed_logins = features.get("failed_login_count", 0)
 
         if failed_logins >= 5:
@@ -76,7 +75,6 @@ class RuleEngine:
 
     def unusual_outbound_rule(self, event: Dict[str, Any]):
         features = event.get("features", {})
-
         connection_rate = features.get("connection_rate", 0)
 
         if connection_rate > 15:
@@ -90,7 +88,6 @@ class RuleEngine:
 
     def api_abuse_rule(self, event: Dict[str, Any]):
         features = event.get("features", {})
-
         auth_failure_rate = features.get("auth_failure_rate", 0)
 
         if auth_failure_rate > 0.7:
