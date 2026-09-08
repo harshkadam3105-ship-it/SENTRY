@@ -176,7 +176,7 @@ export default function SOCOverview() {
 
         {/* Visual Analytics Row: 24h Attack Flow + Severity Donut */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
-          <AttackTrendChart incidents={incidents} />
+          <AttackTrendChart incidents={incidents} events={streamedEvents} />
           <SeverityDonutChart incidents={incidents} />
         </div>
 

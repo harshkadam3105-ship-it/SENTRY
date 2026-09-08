@@ -268,6 +268,24 @@ export async function getRiskyUsers() {
 }
 
 /**
+ * Fetch AI root cause investigation and feature attribution analysis.
+ * @param {string} incidentId
+ * @returns {Promise<Object>}
+ */
+export async function getIncidentAiAnalysis(incidentId) {
+  try {
+    const response = await fetch(`${API_BASE}/incidents/${incidentId}/ai-analysis`)
+    if (response.ok) {
+      return await response.json()
+    }
+  } catch (err) {
+    console.warn('[API] Could not fetch AI analysis:', err)
+  }
+  return null
+}
+
+
+/**
  * Generates an enterprise-standard, forensic-grade SOC Incident Dossier object.
  * Structured for audit compliance, legal hold, and SIEM/SOAR ingestion.
  *
