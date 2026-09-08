@@ -560,3 +560,20 @@ export async function simulateEvent(rule = 'brute_force') {
   }
   return response.json()
 }
+
+/**
+ * Fetch AI feature attribution and kill chain progression analysis.
+ */
+export async function getIncidentAiAnalysis(incidentId) {
+  try {
+    const response = await fetch(`${API_BASE}/incidents/${incidentId}/ai-analysis`)
+    if (response.ok) {
+      return await response.json()
+    }
+  } catch (err) {
+    console.warn('[API] Could not fetch AI analysis:', err)
+  }
+  return null
+}
+
+
