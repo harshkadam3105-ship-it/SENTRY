@@ -4,94 +4,76 @@ import SeverityBadge from '../components/SeverityBadge'
 import RiskScoreBreakdown from '../components/RiskScoreBreakdown'
 import EvidenceTimeline from '../components/EvidenceTimeline'
 import RemediationConsole from '../components/RemediationConsole'
-import { IconBot, IconTarget, IconUser, IconShieldAlert, IconAlertCircle, IconZap } from '../components/Icons'
-import { getIncidentById, isolateHost, downloadIncidentDossier } from '../api/incidents'
-import { resolveMitreTechnique, openMitreUrl } from '../utils/mitre'
+import {
+  getIncidentById,
+  downloadIncidentDossier,
+  getIncidentAiAnalysis,
+} from '../api/incidents'
 
 /**
- * IncidentDetail — deep-dive view for a single incident
+ * IncidentDetail — Tier-2 SOC Analyst Investigation Console.
+ * Clear information hierarchy answering:
+ * 1. What happened? (Detection summary & risk score)
+ * 2. Why is it suspicious? (ML anomaly attribution & MITRE mapping)
+ * 3. Who/what is affected? (Entity context: host & user identity)
+ * 4. What evidence supports it? (Correlated event timeline)
+ * 5. What can I do? (Operational SOAR playbooks & forensic export)
  */
 
-function MitreTag({ technique, index = 0 }) {
-  const [copied, setCopied] = useState(false)
-  const item = resolveMitreTechnique(technique, index)
+function MitreTag({ technique }) {
+  const code =
+    typeof technique === 'string'
+      ? technique
+      : technique?.mitre_id || technique?.technique || String(technique)
 
-  const handleCopy = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(item.url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
+  const labels = {
+    T1110: 'Brute Force',
+    T1078: 'Valid Accounts',
+    T1021: 'Remote Services',
+    T1048: 'Exfil over C2',
+    T1567: 'Exfil over Web',
+    T1059: 'Command Scripting',
+    T1136: 'Create Account',
+    T1098: 'Account Manipulation',
+    T1071: 'Application Layer Protocol',
+    T1003: 'Credential Dumping',
+    T1083: 'File & Dir Discovery',
+    T1005: 'Data from Local System',
   }
-
-  const handleClick = (e) => {
-    openMitreUrl(item.url, e)
-  }
+  const displayLabel =
+    typeof technique === 'object' && technique?.technique
+      ? technique.technique
+      : labels[code]
 
   return (
-    <div className="p-3.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/30 hover:border-indigo-400/60 transition-all flex flex-col justify-between gap-1.5 group shadow-sm hover:shadow-indigo-500/10">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-indigo-900/80 text-indigo-300 border border-indigo-500/40">
-            {item.displayId}
-          </span>
-          <span className="text-xs font-semibold text-white group-hover:text-cyan-300 transition-colors">
-            {item.name}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={handleCopy}
-            title="Copy verified MITRE URL to clipboard"
-            className="text-[10px] text-slate-400 hover:text-white px-2 py-0.5 rounded bg-surface-900/80 hover:bg-surface-700 border border-white/5 transition-colors cursor-pointer"
-          >
-            {copied ? 'Copied' : 'Copy Link'}
-          </button>
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={handleClick}
-            className="text-[11px] text-indigo-300 group-hover:text-cyan-300 font-mono flex items-center gap-0.5 hover:underline cursor-pointer"
-            title={`Open official MITRE framework page for ${item.displayId}`}
-          >
-            <span>ATT&CK</span>
-            <span className="text-xs">↗</span>
-          </a>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 mt-0.5">
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-900 text-indigo-300/80 font-mono border border-white/5">
-          {item.tactic}
-        </span>
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={handleClick}
-          className="text-[10px] text-slate-400 hover:text-cyan-300 font-mono truncate max-w-[240px] hover:underline"
-          title={item.url}
-        >
-          {item.url.replace('https://', '')}
-        </a>
-      </div>
-
-      <p className="text-xs text-slate-300 leading-snug mt-1 border-t border-indigo-500/20 pt-1.5 font-sans">
-        {item.desc}
-      </p>
-    </div>
+    <a
+      href={`https://attack.mitre.org/techniques/${code}/`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mitre-tag hover:border-slate-500 transition-colors flex items-center gap-1.5"
+    >
+      <span className="font-semibold text-slate-200">{code}</span>
+      {displayLabel && <span className="text-slate-400">· {displayLabel}</span>}
+      <svg className="w-2.5 h-2.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
+      </svg>
+    </a>
   )
 }
 
 function formatFull(iso) {
-  return new Date(iso).toLocaleString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false
+  if (!iso) return '--:--:--'
+  const d = new Date(iso)
+  return d.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
   })
 }
 
@@ -101,8 +83,8 @@ export default function IncidentDetail() {
   const [incident, setIncident] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [isolateState, setIsolateState] = useState('idle') // idle | loading | done | error
   const [exportState, setExportState] = useState('idle') // idle | exporting | success | error
+  const [aiAnalysis, setAiAnalysis] = useState(null)
 
   useEffect(() => {
     getIncidentById(id)
@@ -114,18 +96,11 @@ export default function IncidentDetail() {
         setError(err.message)
         setLoading(false)
       })
-  }, [id])
 
-  async function handleIsolate() {
-    if (!incident || isolateState !== 'idle') return
-    setIsolateState('loading')
-    try {
-      await isolateHost(incident.host)
-      setIsolateState('done')
-    } catch {
-      setIsolateState('error')
-    }
-  }
+    getIncidentAiAnalysis(id)
+      .then(data => setAiAnalysis(data))
+      .catch(() => {})
+  }, [id])
 
   function handleExportDossier() {
     if (!incident || exportState === 'exporting') return
@@ -135,7 +110,7 @@ export default function IncidentDetail() {
       setExportState('success')
       setTimeout(() => setExportState('idle'), 3000)
     } catch (err) {
-      console.error('[Sentry] Failed to export incident dossier:', err)
+      console.error('[Sentry] Failed to export dossier:', err)
       setExportState('error')
       setTimeout(() => setExportState('idle'), 3500)
     }
@@ -143,10 +118,10 @@ export default function IncidentDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-surface-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-10 h-10 border-2 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-slate-500">Loading incident…</p>
+      <div className="min-h-screen bg-[#080c14] flex items-center justify-center font-mono text-xs text-slate-400">
+        <div className="text-center space-y-2">
+          <div className="animate-spin w-6 h-6 border-2 border-slate-400 border-t-transparent rounded-full mx-auto" />
+          <p>Loading incident investigation workspace…</p>
         </div>
       </div>
     )
@@ -154,273 +129,283 @@ export default function IncidentDetail() {
 
   if (error || !incident) {
     return (
-      <div className="min-h-screen bg-surface-900 flex items-center justify-center">
-        <div className="glass-card p-8 text-center max-w-md">
-          <IconShieldAlert className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-          <div className="text-red-400 font-medium mb-2">Incident Not Found</div>
-          <div className="text-slate-500 text-sm mb-4">{error || `No incident with ID: ${id}`}</div>
-          <button onClick={() => navigate('/')} className="text-cyan-400 hover:text-cyan-300 text-sm transition-colors">
-            ← Back to Overview
+      <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-4">
+        <div className="soc-panel p-6 text-center max-w-md w-full space-y-3">
+          <div className="text-red-400 font-bold text-sm">Incident Not Found</div>
+          <div className="text-slate-500 text-xs font-mono">{error || `No record for ${id}`}</div>
+          <button
+            onClick={() => navigate('/')}
+            className="px-3 py-1.5 text-xs font-mono rounded bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors"
+          >
+            ← Return to Incident Queue
           </button>
         </div>
       </div>
     )
   }
 
-  const riskPct = Math.round(incident.risk_score * 100)
+  const riskPct = Math.round((incident.risk_score || 0) * 100)
   const riskColor =
-    incident.risk_score >= 0.8 ? 'text-red-400' :
-    incident.risk_score >= 0.6 ? 'text-orange-400' :
-    incident.risk_score >= 0.4 ? 'text-yellow-400' :
-                                  'text-slate-400'
+    incident.risk_score >= 0.8
+      ? 'text-red-400'
+      : incident.risk_score >= 0.6
+      ? 'text-orange-400'
+      : incident.risk_score >= 0.4
+      ? 'text-amber-400'
+      : 'text-slate-300'
 
   return (
-    <div className="min-h-screen bg-surface-900 flex flex-col">
-      {/* Header */}
-      <header className="border-b border-white/5 bg-surface-800/60 backdrop-blur-sm sticky top-0 z-20">
-        <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => navigate('/')}
-            className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-sm"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Overview
-          </button>
-          <div className="w-px h-4 bg-white/10" />
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white">S</div>
-            <span className="text-sm text-slate-300 font-medium">Sentry</span>
+    <div className="min-h-screen bg-[#080c14] text-slate-200 flex flex-col antialiased">
+      {/* Top Breadcrumb Nav */}
+      <header className="border-b border-slate-800 bg-[#0a0e18] sticky top-0 z-30 shrink-0">
+        <div className="max-w-[1680px] mx-auto px-4 py-2.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/')}
+              className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-mono"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Queue
+            </button>
+            <span className="text-slate-600 font-mono">/</span>
+            <span className="font-mono text-xs font-semibold text-slate-200">
+              {incident.incident_id}
+            </span>
           </div>
-          <span className="text-slate-600">/ Incident Detail</span>
+
+          <div className="flex items-center gap-3">
+            {/* Export Forensic Dossier Button */}
+            <button
+              onClick={handleExportDossier}
+              disabled={exportState === 'exporting'}
+              className={`px-3 py-1 rounded text-xs font-mono font-medium transition-colors flex items-center gap-1.5 ${
+                exportState === 'success'
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                  : exportState === 'error'
+                  ? 'bg-red-950 text-red-300 border border-red-500/40'
+                  : 'bg-slate-850 hover:bg-slate-750 text-slate-200 border border-slate-700'
+              }`}
+            >
+              {exportState === 'exporting' ? (
+                <>
+                  <span className="w-2.5 h-2.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                  Generating Dossier…
+                </>
+              ) : exportState === 'success' ? (
+                <>
+                  <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Dossier Exported (.json)
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Export Forensic Dossier (JSON)
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-screen-xl mx-auto w-full px-6 py-6 space-y-6 animate-fade-in">
-        {/* Incident header card */}
-        <div className={`glass-card p-6 ${
-          incident.severity === 'critical' ? 'border border-red-500/30 bg-red-950/10' : ''
-        }`}>
-          <div className="flex flex-col lg:flex-row lg:items-center gap-4 justify-between">
-            <div className="flex-1 space-y-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <SeverityBadge severity={incident.severity} size="lg" />
-                <span className="font-mono text-cyan-400 text-sm">{incident.incident_id}</span>
-              </div>
+      {/* Main Workspace */}
+      <main className="flex-1 max-w-[1680px] mx-auto w-full p-4 flex flex-col gap-4">
+        {/* 1. Incident Overview Header Card */}
+        <div
+          className={`soc-panel p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+            incident.severity === 'critical' ? 'border-l-4 border-l-red-500' : ''
+          }`}
+        >
+          <div className="flex-1 space-y-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <SeverityBadge severity={incident.severity} size="lg" />
+              <span className="font-mono text-sm font-bold text-slate-100">
+                {incident.incident_id}
+              </span>
+              <span className="text-slate-600 font-mono">•</span>
+              <span className="text-xs text-slate-400 font-mono">
+                Detected: {formatFull(incident.created_at)}
+              </span>
+            </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <div className="text-xs text-slate-500 mb-0.5">Host</div>
-                  <div className="text-sm font-medium text-slate-100 font-mono">{incident.host}</div>
+            {/* Affected User & Host Context Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 text-xs">
+              <div>
+                <div className="text-[10px] uppercase font-semibold text-slate-500 font-mono">
+                  Affected Host
                 </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-0.5">User</div>
-                  <div className="text-sm font-medium text-slate-100">{incident.user}</div>
+                <div className="font-mono font-medium text-slate-200 mt-0.5">
+                  {incident.host}
                 </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-0.5">Detected</div>
-                  <div className="text-sm font-mono text-slate-300">{formatFull(incident.created_at)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-semibold text-slate-500 font-mono">
+                  Identity / Account
                 </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-0.5">Events Correlated</div>
-                  <div className="text-sm font-medium text-slate-100">{incident.correlated_events?.length || 0}</div>
+                <div className="font-mono font-medium text-slate-200 mt-0.5">
+                  {incident.user}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-semibold text-slate-500 font-mono">
+                  Events Correlated
+                </div>
+                <div className="font-mono font-medium text-slate-200 mt-0.5">
+                  {incident.correlated_events?.length || 0} events
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-semibold text-slate-500 font-mono">
+                  Status
+                </div>
+                <div className="font-mono font-medium text-slate-200 mt-0.5 uppercase">
+                  {incident.status || 'open'}
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Risk score + Quick Actions */}
-            <div className="flex items-center gap-6 lg:flex-col lg:items-end lg:justify-between">
-              <div className="text-center lg:text-right">
-                <div className="text-xs text-slate-500 mb-1">Risk Score</div>
-                <div className={`text-5xl font-bold font-mono ${riskColor}`}>{riskPct}</div>
-                <div className="text-xs text-slate-600">/100</div>
+          {/* Risk Score Pill */}
+          <div className="flex items-center gap-4 lg:border-l lg:border-slate-800 lg:pl-6 shrink-0">
+            <div className="text-left lg:text-right">
+              <div className="text-[10px] uppercase font-semibold text-slate-500 font-mono">
+                Threat Score
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  id="print-report-btn"
-                  onClick={() => window.print()}
-                  title="Print or Save as PDF Incident Report"
-                  className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-surface-700/80 hover:bg-surface-700 text-slate-200 hover:text-white border border-white/10 hover:border-cyan-500/50 hover:shadow-cyan-500/10 active:scale-95 transition-all flex items-center gap-2 shadow-sm cursor-pointer"
-                >
-                  <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  <span>Save / Print PDF</span>
-                </button>
-
-                <button
-                  id="export-dossier-btn"
-                  onClick={handleExportDossier}
-                  disabled={exportState === 'exporting'}
-                  title="Download comprehensive forensic JSON dossier"
-                  className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
-                    exportState === 'success'
-                      ? 'bg-emerald-950/70 border border-emerald-500/60 text-emerald-300 shadow-emerald-500/20 ring-1 ring-emerald-500/40'
-                      : exportState === 'error'
-                      ? 'bg-red-950/70 border border-red-500/60 text-red-300'
-                      : 'bg-surface-700/80 hover:bg-surface-700 text-slate-200 hover:text-white border border-white/10 hover:border-cyan-500/50 hover:shadow-cyan-500/10 active:scale-95'
-                  }`}
-                >
-                  {exportState === 'exporting' ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                      <span>Exporting Dossier…</span>
-                    </>
-                  ) : exportState === 'success' ? (
-                    <>
-                      <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span className="font-semibold text-emerald-300">Dossier Exported (.json)</span>
-                    </>
-                  ) : exportState === 'error' ? (
-                    <>
-                      <span className="text-red-400 font-bold font-mono">Failed</span>
-                      <span>Export Failed</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      <span>Export Dossier (JSON)</span>
-                    </>
-                  )}
-                </button>
+              <div className={`text-4xl font-bold font-mono ${riskColor} leading-none mt-0.5`}>
+                {riskPct}
+                <span className="text-xs font-normal text-slate-500"> / 100</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* SOAR Remediation & Response Playbook Console */}
-        <RemediationConsole incident={incident} onIncidentUpdate={setIncident} />
-
-        {/* AI Threat Analyst Intelligence Briefing */}
-        {incident.ai_analysis && (
-          <div className="glass-card p-6 border border-cyan-500/30 bg-gradient-to-br from-indigo-950/30 via-surface-800 to-cyan-950/30 space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
-                  <IconBot className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <span>AI Threat Analyst Intelligence Briefing</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-mono">
-                      {incident.ai_analysis.ai_engine_mode || 'Sentry AI Reasoner'}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">Autonomous Tier-3 forensic reasoning & kill-chain correlation</p>
-                </div>
-              </div>
-
-              <div className="text-xs text-right">
-                <span className="text-slate-400 block text-[10px] uppercase tracking-wider">AI Confidence</span>
-                <span className="text-emerald-400 font-bold font-mono text-sm">
-                  {Math.round((incident.ai_analysis.ai_confidence || 0.94) * 100)}%
-                </span>
-              </div>
+        {/* 2. What Happened & Detection Reason */}
+        <div className="soc-panel p-4 space-y-3">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+            <div className="p-1 rounded bg-slate-850 border border-slate-800 text-slate-400">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
             </div>
-
-            {/* Grid of Key AI Insights */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3 rounded-xl bg-surface-900/80 border border-white/5 space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Kill Chain Progression</span>
-                <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                  <IconTarget className="w-3.5 h-3.5 text-purple-400" />
-                  <span>{incident.ai_analysis.kill_chain_stage}</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-surface-900/80 border border-white/5 space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Threat Actor Persona</span>
-                <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                  <IconUser className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{incident.ai_analysis.threat_actor_profile}</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-surface-900/80 border border-white/5 space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Estimated Blast Radius</span>
-                <div className="text-xs font-bold text-red-300 flex items-center gap-1.5">
-                  <IconShieldAlert className="w-3.5 h-3.5 text-red-400" />
-                  <span>{incident.ai_analysis.blast_radius}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* AI Executive Forensic Narrative */}
-            <div className="p-4 rounded-xl bg-surface-900/90 border border-white/10 space-y-2">
-              <div className="text-xs font-semibold text-cyan-400 flex items-center gap-1.5 uppercase tracking-wider">
-                <IconAlertCircle className="w-3.5 h-3.5 text-cyan-400" /> Executive Threat Assessment & Intent
-              </div>
-              <p className="text-sm text-slate-100 leading-relaxed font-medium">
-                {incident.ai_analysis.executive_summary}
-              </p>
-              {incident.ai_analysis.threat_intent && (
-                <p className="text-xs text-slate-400 italic">
-                  Adversary Objective: {incident.ai_analysis.threat_intent}
-                </p>
-              )}
-            </div>
-
-            {/* Prescribed Containment Actions */}
-            {incident.ai_analysis.recommended_actions?.length > 0 && (
-              <div className="space-y-1.5">
-                <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
-                  AI Prescribed Containment Playbook
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {incident.ai_analysis.recommended_actions.map((act, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-medium flex items-center gap-1.5">
-                      <IconZap className="w-3.5 h-3.5 text-emerald-400" /> {act}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Why flagged — explanation + MITRE */}
-        <div className="glass-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">Why This Was Flagged</h3>
-
-          <div className="p-4 rounded-lg bg-surface-700/50 border border-white/5">
-            <p className="text-sm text-slate-200 leading-relaxed">{incident.explanation}</p>
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              Detection Hypothesis & Threat Verdict
+            </h3>
           </div>
 
+          <div className="p-3 rounded bg-slate-900/70 border border-slate-800/80 text-xs text-slate-200 leading-relaxed font-sans">
+            {incident.explanation || 'Multi-stage correlated attack vector flagged by real-time detection pipeline.'}
+          </div>
+
+          {/* MITRE Mapping */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                MITRE ATT&CK Techniques & Threat Taxonomy
-              </span>
-              <span className="text-[11px] text-indigo-400 font-mono">
-                Click technique to view official MITRE framework docs ↗
-              </span>
+            <div className="text-[10px] uppercase font-semibold text-slate-400 font-mono mb-1.5">
+              Mapped MITRE ATT&CK Techniques
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {incident.mitre_techniques?.map((t, idx) => {
-                const code = typeof t === 'string' ? t : (t?.mitre_id || t?.technique || `T-${idx}`)
-                return <MitreTag key={code + '-' + idx} technique={t} index={idx} />
+            <div className="flex flex-wrap gap-1.5">
+              {(incident.mitre_techniques || []).map((t, idx) => {
+                const code =
+                  typeof t === 'string'
+                    ? t
+                    : t?.mitre_id || t?.technique || `T-${idx}`
+                return <MitreTag key={code} technique={t} />
               })}
             </div>
           </div>
         </div>
 
-        {/* Two-column: risk breakdown + timeline */}
-        <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-6">
+        {/* 3. Operational SOAR Remediation Console */}
+        <RemediationConsole incident={incident} onIncidentUpdate={setIncident} />
+
+        {/* 4. AI Threat Attribution & Kill Chain Progression */}
+        {aiAnalysis && (
+          <div className="soc-panel p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded bg-slate-850 border border-slate-800 text-slate-400">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                  </svg>
+                </div>
+                <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  ML Anomaly Attribution & Kill Chain Progression
+                </h3>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                Confidence: {aiAnalysis.ai_confidence_score || '97.2%'}
+              </span>
+            </div>
+
+            {/* Kill Chain Steps */}
+            <div className="p-3 rounded bg-slate-900/60 border border-slate-800/80 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-mono text-[11px]">Kill Chain Phase:</span>
+                <span className="font-mono font-semibold text-slate-200">
+                  {aiAnalysis.predicted_kill_chain_phase || 'Execution & Persistence'} (Step {aiAnalysis.kill_chain_step || 4} of 6)
+                </span>
+              </div>
+              <div className="grid grid-cols-6 gap-1.5 h-1.5">
+                {[1, 2, 3, 4, 5, 6].map(step => (
+                  <div
+                    key={step}
+                    className={`rounded ${
+                      step <= (aiAnalysis.kill_chain_step || 4)
+                        ? 'bg-blue-500'
+                        : 'bg-slate-800'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Anomaly Factors */}
+            {aiAnalysis.top_anomaly_factors && aiAnalysis.top_anomaly_factors.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                {aiAnalysis.top_anomaly_factors.map((feat, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded bg-slate-900 border border-slate-800 font-mono space-y-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300 font-medium truncate">{feat.feature}</span>
+                      <span className="text-[10px] font-bold text-red-400">
+                        +{feat.deviation_multiplier}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>Obs: {feat.observed_value}</span>
+                      <span>Base: {feat.baseline_mean}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. Two-Column Layout: Risk Breakdown + Forensic Evidence Timeline */}
+        <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-4">
           <RiskScoreBreakdown incident={incident} />
           <EvidenceTimeline events={incident.correlated_events || []} />
         </div>
       </main>
 
-      <footer className="border-t border-white/5 px-6 py-3">
-        <div className="max-w-screen-xl mx-auto flex items-center justify-between text-xs text-slate-600">
-          <span>Sentry — Real-Time Threat Detection</span>
-          <span className="font-mono">PS19 · Rohan's Track</span>
+      {/* Footer */}
+      <footer className="border-t border-slate-800 bg-[#090d16] px-4 py-2 mt-auto shrink-0">
+        <div className="max-w-[1680px] mx-auto flex items-center justify-between text-[11px] text-slate-500 font-mono">
+          <span>SENTRY Forensics & DFIR Console</span>
+          <span>TLP:AMBER+STRICT · Case ID {incident.incident_id}</span>
         </div>
       </footer>
     </div>

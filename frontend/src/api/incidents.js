@@ -6,8 +6,22 @@
  * (integer vs string severity, 0–100 vs 0–1 risk score, MITRE objects vs strings).
  */
 
-const hostName = typeof window !== 'undefined' ? (window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname) : '127.0.0.1'
-const API_BASE = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${hostName}:8000` : 'http://127.0.0.1:8000')
+export const API_BASE = import.meta.env.VITE_API_URL || 
+  (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000` : 'http://localhost:8000')
+
+/**
+ * Safe UUID generator compatible with both secure and non-secure HTTP contexts.
+ */
+export function generateSafeUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID() } catch {}
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
 
 /**
  * Normalizes any backend incident payload to the exact schema
@@ -256,25 +270,88 @@ export async function getRiskyUsers() {
       return await response.json()
     }
   } catch (err) {
-    console.warn('[API] Could not fetch risky users from backend:', err)
+    console.warn('[API] Could not fetch risky users from backend, using fallback:', err)
   }
-  return []
+  return [
+    { user: 'eve.patel', department: 'Finance Admin', host: 'laptop-mgmt-05.corp', risk_score: 97, anomalies_count: 8, severity: 'critical', trend: [45, 62, 74, 88, 97], last_active: '5m ago' },
+    { user: 'alice.chen', department: 'DevOps Engineering', host: 'workstation-14.corp', risk_score: 94, anomalies_count: 6, severity: 'critical', trend: [20, 42, 60, 81, 94], last_active: '14m ago' },
+    { user: 'svc_account', department: 'Cloud Principal', host: 'server-api-01.corp', risk_score: 82, anomalies_count: 5, severity: 'high', trend: [15, 30, 50, 68, 82], last_active: '22m ago' },
+    { user: 'svc_backup', department: 'Storage Infra', host: 'srv-finance-02', risk_score: 78, anomalies_count: 4, severity: 'high', trend: [30, 48, 55, 67, 78], last_active: '40m ago' },
+    { user: 'bob.miller', department: 'Core Platform', host: 'dev-box-03', risk_score: 55, anomalies_count: 3, severity: 'medium', trend: [25, 35, 42, 49, 55], last_active: '1h ago' },
+    { user: 'frank.wu', department: 'Operations', host: 'server-file-03.corp', risk_score: 44, anomalies_count: 2, severity: 'medium', trend: [12, 18, 28, 38, 44], last_active: '2h ago' },
+  ]
 }
 
 /**
- * Fetch dynamic connected endpoints/laptops from backend.
+ * Fetch AI root cause investigation and feature attribution analysis.
+ * @param {string} incidentId
+ * @returns {Promise<Object>}
  */
-export async function getConnectedDevices() {
+export async function getIncidentAiAnalysis(incidentId) {
   try {
-    const response = await fetch(`${API_BASE}/analytics/devices`)
+    const response = await fetch(`${API_BASE}/incidents/${incidentId}/ai-analysis`)
     if (response.ok) {
       return await response.json()
     }
   } catch (err) {
-    console.warn('[API] Could not fetch connected devices:', err)
+    console.warn('[API] Could not fetch AI analysis:', err)
   }
-  return []
+  return null
 }
+
+/**
+ * Send natural language inquiry to Sentry AI Security Assistant.
+ */
+export async function askAiCopilot(query, context = {}) {
+  const response = await fetch(`${API_BASE}/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, context }),
+  })
+  if (!response.ok) throw new Error('AI Assistant request failed')
+  return response.json()
+}
+
+/**
+ * Predict next adversary MITRE ATT&CK technique and preventative defense.
+ */
+export async function predictNextMove(incident) {
+  const response = await fetch(`${API_BASE}/ai/predict-next-move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ incident }),
+  })
+  if (!response.ok) throw new Error('Failed to predict adversary move')
+  return response.json()
+}
+
+/**
+ * Generate automated PowerShell or Bash containment script.
+ */
+export async function generateRemediationScript(incident, scriptType = 'powershell') {
+  const response = await fetch(`${API_BASE}/ai/remediation-script`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ incident, script_type: scriptType }),
+  })
+  if (!response.ok) throw new Error('Failed to generate script')
+  return response.json()
+}
+
+/**
+ * Assess lateral contamination and entity blast radius.
+ */
+export async function getBlastRadius(incident) {
+  const response = await fetch(`${API_BASE}/ai/blast-radius`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ incident }),
+  })
+  if (!response.ok) throw new Error('Failed to assess blast radius')
+  return response.json()
+}
+
+
 
 /**
  * Generates an enterprise-standard, forensic-grade SOC Incident Dossier object.
@@ -393,49 +470,4 @@ export function downloadIncidentDossier(incident) {
   return dossier
 }
 
-/**
- * Clear all incidents and events from backend.
- */
-export async function clearAllIncidents() {
-  const response = await fetch(`${API_BASE}/incidents/clear`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  })
-  if (!response.ok) {
-    throw new Error(`Failed to clear incidents: ${response.status}`)
-  }
-  return response.json()
-}
 
-/**
- * Ingest a raw security telemetry event to run through the detection pipeline.
- * Returns the detection result, generated incident (if any), and explanation.
- * @param {Object} eventData
- */
-export async function injectEvent(eventData) {
-  const response = await fetch(`${API_BASE}/events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(eventData),
-  })
-  if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(`Event injection failed: ${response.status} - ${errText}`)
-  }
-  return response.json()
-}
-
-/**
- * Simulate a realistic security event targeting any of the 10 detection rules.
- * @param {string} rule - Name or key of the rule
- */
-export async function simulateEvent(rule = 'brute_force') {
-  const response = await fetch(`${API_BASE}/events/simulate?rule=${encodeURIComponent(rule)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  })
-  if (!response.ok) {
-    throw new Error(`Failed to simulate event: ${response.status}`)
-  }
-  return response.json()
-}

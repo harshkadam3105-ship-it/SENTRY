@@ -16,10 +16,9 @@
 
 import { normalizeIncident } from '../api/incidents'
 
-const hostName = typeof window !== 'undefined' ? (window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname) : '127.0.0.1'
 const defaultWsBase = typeof window !== 'undefined'
-  ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${hostName}:8000`
-  : 'ws://127.0.0.1:8000'
+  ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000`
+  : 'ws://localhost:8000'
 const WS_BASE = import.meta.env.VITE_WS_URL || defaultWsBase
 const WS_PATHS = ['/ws/incidents', '/ws']
 
