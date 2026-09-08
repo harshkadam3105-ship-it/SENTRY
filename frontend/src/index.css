@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -18,7 +16,7 @@
   body {
     background-color: #070b14;
     color: #e2e8f0;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -53,7 +51,12 @@
   }
 
   .glass-card-hover {
-    @apply glass-card transition-all duration-200;
+    background: rgba(17, 24, 39, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.75rem;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .glass-card-hover:hover {
@@ -64,28 +67,48 @@
 
   /* Severity badges */
   .badge-critical {
-    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
     background: rgba(69, 10, 10, 0.8);
     color: #fca5a5;
     border: 1px solid rgba(239, 68, 68, 0.4);
   }
 
   .badge-high {
-    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
     background: rgba(67, 20, 7, 0.8);
     color: #fdba74;
     border: 1px solid rgba(249, 115, 22, 0.4);
   }
 
   .badge-medium {
-    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
     background: rgba(66, 32, 6, 0.8);
     color: #fde047;
     border: 1px solid rgba(234, 179, 8, 0.4);
   }
 
   .badge-low {
-    @apply px-2.5 py-0.5 text-xs font-semibold rounded-full;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
     background: rgba(30, 41, 59, 0.8);
     color: #94a3b8;
     border: 1px solid rgba(148, 163, 184, 0.3);
@@ -93,7 +116,12 @@
 
   /* MITRE tags */
   .mitre-tag {
-    @apply px-2 py-0.5 text-xs font-mono rounded;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    border-radius: 0.25rem;
     background: rgba(30, 27, 75, 0.8);
     color: #a5b4fc;
     border: 1px solid rgba(67, 56, 202, 0.4);
