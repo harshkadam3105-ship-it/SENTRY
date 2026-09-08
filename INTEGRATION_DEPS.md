@@ -1,4 +1,4 @@
-# SentinelX — Integration Dependencies
+# Sentry — Integration Dependencies
 
 > **Who this is for:** Tanmay (backend/FastAPI), Correlation-Engine teammate, anyone touching the data pipeline.
 > **What it covers:** Every field the frontend reads, every endpoint it calls, and what breaks vs. silently degrades on schema drift.

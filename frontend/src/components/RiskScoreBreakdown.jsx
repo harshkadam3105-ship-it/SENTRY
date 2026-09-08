@@ -2,7 +2,7 @@
  * RiskScoreBreakdown — visual breakdown of risk score components
  */
 
-const COMPONENTS = [
+const _COMPONENTS = [
   { key: 'anomaly_score', label: 'Anomaly Score', description: 'ML anomaly detection confidence', icon: '🧠' },
   { key: 'rule_score',    label: 'Rule Match',     description: 'Signature & rule-based detection', icon: '📋' },
 ]

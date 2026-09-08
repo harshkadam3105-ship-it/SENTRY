@@ -10,6 +10,7 @@ import { getIncidentById, isolateHost } from '../api/incidents'
  */
 
 function MitreTag({ technique }) {
+  const code = typeof technique === 'string' ? technique : (technique?.mitre_id || technique?.technique || String(technique))
   // Map common techniques to labels
   const labels = {
     T1110: 'Brute Force',
@@ -25,15 +26,17 @@ function MitreTag({ technique }) {
     T1083: 'File & Dir Discovery',
     T1005: 'Data from Local System',
   }
+  const displayLabel = (typeof technique === 'object' && technique?.technique) ? technique.technique : labels[code]
+
   return (
     <a
-      href={`https://attack.mitre.org/techniques/${technique}/`}
+      href={`https://attack.mitre.org/techniques/${code}/`}
       target="_blank"
       rel="noopener noreferrer"
       className="mitre-tag hover:bg-indigo-900/40 transition-colors flex items-center gap-1"
     >
-      <span>{technique}</span>
-      {labels[technique] && <span className="text-indigo-400 opacity-70">· {labels[technique]}</span>}
+      <span>{code}</span>
+      {displayLabel && <span className="text-indigo-400 opacity-70">· {displayLabel}</span>}
     </a>
   )
 }
@@ -127,7 +130,7 @@ export default function IncidentDetail() {
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white">S</div>
-            <span className="text-sm text-slate-300 font-medium">SentinelX</span>
+            <span className="text-sm text-slate-300 font-medium">Sentry</span>
           </div>
           <span className="text-slate-600">/ Incident Detail</span>
         </div>
@@ -208,9 +211,10 @@ export default function IncidentDetail() {
           <div>
             <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider">MITRE ATT&CK Techniques</div>
             <div className="flex flex-wrap gap-2">
-              {incident.mitre_techniques?.map(t => (
-                <MitreTag key={t} technique={t} />
-              ))}
+              {incident.mitre_techniques?.map((t, idx) => {
+                const code = typeof t === 'string' ? t : (t?.mitre_id || t?.technique || `T-${idx}`)
+                return <MitreTag key={code} technique={t} />
+              })}
             </div>
           </div>
         </div>
@@ -224,7 +228,7 @@ export default function IncidentDetail() {
 
       <footer className="border-t border-white/5 px-6 py-3">
         <div className="max-w-screen-xl mx-auto flex items-center justify-between text-xs text-slate-600">
-          <span>SentinelX — Real-Time Threat Detection</span>
+          <span>Sentry — Real-Time Threat Detection</span>
           <span className="font-mono">PS19 · Rohan's Track</span>
         </div>
       </footer>

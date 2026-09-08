@@ -53,7 +53,7 @@ async def trigger_attack(payload: dict):
 
 async def main():
     loop_mode = "--loop" in sys.argv
-    print(f"SentinelX Demo Trigger — backend: {BACKEND_URL}")
+    print(f"Sentry Demo Trigger — backend: {BACKEND_URL}")
 
     if loop_mode:
         print("Loop mode: triggering every 20s. Press Ctrl+C to stop.")

@@ -41,7 +41,7 @@ export default function IncidentTable({ incidents = [], newIds = new Set() }) {
 
   const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 }
   const sorted = [...incidents].sort(
-    (a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.risk_score - a.risk_score
+    (a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3) || (b.risk_score || 0) - (a.risk_score || 0)
   )
 
   return (
@@ -100,9 +100,12 @@ export default function IncidentTable({ incidents = [], newIds = new Set() }) {
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex flex-wrap gap-1">
-                      {inc.mitre_techniques?.slice(0, 2).map(t => (
-                        <span key={t} className="mitre-tag">{t}</span>
-                      ))}
+                      {inc.mitre_techniques?.slice(0, 2).map((t, idx) => {
+                        const code = typeof t === 'string' ? t : (t?.mitre_id || t?.technique || `T-${idx}`)
+                        return (
+                          <span key={code} className="mitre-tag">{code}</span>
+                        )
+                      })}
                       {inc.mitre_techniques?.length > 2 && (
                         <span className="mitre-tag">+{inc.mitre_techniques.length - 2}</span>
                       )}

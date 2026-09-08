@@ -1,4 +1,4 @@
-# AGENTS.md — SentinelX (PS19) · Rohan's Track
+# AGENTS.md — Sentry (PS19) · Rohan's Track
 
 > This file is the authoritative context document for any AI agent (or human) picking up work on this repo.
 > It covers everything built in Session 1 (2026-09-08), current state, known issues, and next steps.
@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-**SentinelX** is a real-time cybersecurity threat detection and SOC (Security Operations Center) dashboard.
+**Sentry** is a real-time cybersecurity threat detection and SOC (Security Operations Center) dashboard.
 
 | Attribute | Value |
 |---|---|
@@ -84,7 +84,7 @@ frontend/
 ├── Dockerfile
 ├── vite.config.js          # proxy /api → backend, host 0.0.0.0
 ├── tailwind.config.js      # dark SIEM theme, severity colors, animations
-├── index.html              # title: "SentinelX | SOC Dashboard"
+├── index.html              # title: "Sentry | SOC Dashboard"
 └── src/
     ├── index.css           # glassmorphism, severity badges, MITRE tags, animations
     ├── main.jsx            # React 18 StrictMode entry

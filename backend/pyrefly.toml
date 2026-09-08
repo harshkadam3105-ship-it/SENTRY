@@ -1,4 +1,4 @@
-# Pyrefly config for SentinelX backend stub
+# Pyrefly config for Sentry backend stub
 # Suppress virtual/in-memory analysis noise
 
 [python]

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import SeverityBadge from './SeverityBadge'
 
 /**
  * LiveFeedPanel — auto-scrolling real-time event feed
@@ -18,14 +17,20 @@ function formatRelative(iso) {
 
 const EVENT_TYPE_ICONS = {
   auth_failure:         '🔑',
+  failed_login:         '🔑',
   lateral_movement:     '↔️',
   privilege_escalation: '⬆️',
   data_exfiltration:    '📤',
   command_and_control:  '📡',
   suspicious_process:   '⚙️',
+  new_process:          '⚙️',
   account_creation:     '👤',
   persistence:          '🔒',
   network_anomaly:      '🌐',
+  connection_attempt:   '🔌',
+  packet_drop:          '🛑',
+  suspicious_flow:      '🌊',
+  app_log:              '📝',
   credential_dump:      '💾',
   ransomware_indicator: '🚨',
   file_discovery:       '📂',
@@ -33,12 +38,12 @@ const EVENT_TYPE_ICONS = {
   anomaly_detected:     '⚠️',
 }
 
-export default function LiveFeedPanel({ incidents = [], wsStatus = 'disconnected' }) {
+export default function LiveFeedPanel({ incidents = [], streamedEvents = [], wsStatus = 'disconnected' }) {
   const scrollRef = useRef(null)
   const prevCountRef = useRef(0)
 
-  // Flatten all correlated events, attach parent incident info
-  const events = incidents
+  // Flatten all correlated events from incidents, attach parent incident info
+  const incidentEvents = incidents
     .flatMap(inc =>
       inc.correlated_events?.map(ev => ({
         ...ev,
@@ -47,8 +52,19 @@ export default function LiveFeedPanel({ incidents = [], wsStatus = 'disconnected
         severity: inc.severity,
       })) || []
     )
+
+  // Merge streamed real-time events with incident events, deduplicating by event_id
+  const seenIds = new Set()
+  const allEvents = [...streamedEvents, ...incidentEvents].filter(ev => {
+    if (!ev.event_id) return true
+    if (seenIds.has(ev.event_id)) return false
+    seenIds.add(ev.event_id)
+    return true
+  })
+
+  const events = allEvents
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, 40)
+    .slice(0, 50)
 
   // Auto-scroll to top when new events arrive
   useEffect(() => {

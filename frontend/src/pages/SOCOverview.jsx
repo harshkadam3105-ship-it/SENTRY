@@ -16,6 +16,7 @@ export default function SOCOverview() {
   const [error, setError] = useState(null)
   const [wsStatus, setWsStatus] = useState('disconnected')
   const [newIds, setNewIds] = useState(new Set())
+  const [streamedEvents, setStreamedEvents] = useState([])
   const socketRef = useRef(null)
 
   // Load initial incidents
@@ -57,16 +58,22 @@ export default function SOCOverview() {
     })
   }, [])
 
+  // WebSocket: handle real-time telemetry events
+  const handleEvent = useCallback((event) => {
+    setStreamedEvents(prev => [event, ...prev.slice(0, 49)])
+  }, [])
+
   useEffect(() => {
     const socket = createIncidentSocket({
       onIncident: handleIncident,
+      onEvent: handleEvent,
       onStatus: setWsStatus,
     })
     socket.connect()
     socketRef.current = socket
 
     return () => socket.disconnect()
-  }, [handleIncident])
+  }, [handleIncident, handleEvent])
 
   // Compute stats
   const totalIncidents = incidents.length
@@ -86,7 +93,7 @@ export default function SOCOverview() {
               S
             </div>
             <div>
-              <span className="text-base font-bold text-white tracking-tight">SentinelX</span>
+              <span className="text-base font-bold text-white tracking-tight">Sentry</span>
               <span className="text-xs text-slate-500 ml-2">SOC Dashboard</span>
             </div>
           </div>
@@ -193,7 +200,7 @@ export default function SOCOverview() {
           <div className="flex flex-col gap-3" style={{ maxHeight: '70vh' }}>
             <h2 className="text-sm font-semibold text-slate-300">Real-Time Feed</h2>
             <div className="flex-1" style={{ minHeight: 0, maxHeight: '60vh' }}>
-              <LiveFeedPanel incidents={incidents} wsStatus={wsStatus} />
+              <LiveFeedPanel incidents={incidents} streamedEvents={streamedEvents} wsStatus={wsStatus} />
             </div>
           </div>
         </div>
@@ -202,7 +209,7 @@ export default function SOCOverview() {
       {/* Footer */}
       <footer className="border-t border-white/5 px-6 py-3">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between text-xs text-slate-600">
-          <span>SentinelX — Real-Time Threat Detection</span>
+          <span>Sentry — Real-Time Threat Detection</span>
           <span className="font-mono">PS19 · Rohan's Track</span>
         </div>
       </footer>

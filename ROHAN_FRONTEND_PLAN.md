@@ -1,4 +1,4 @@
-# SentinelX (PS19) — Rohan's Track: Frontend + Demo Environment
+# Sentry (PS19) — Rohan's Track: Frontend + Demo Environment
 
 **Owner:** Rohan (solo track)
 **Duration:** 12 hours

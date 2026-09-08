@@ -30,7 +30,17 @@ const SEVERITY_CONFIG = {
 }
 
 export default function SeverityBadge({ severity, size = 'sm', showDot = true }) {
-  const config = SEVERITY_CONFIG[severity?.toLowerCase()] || SEVERITY_CONFIG.low
+  let key = 'low'
+  if (typeof severity === 'number') {
+    if (severity >= 4) key = 'critical'
+    else if (severity === 3) key = 'high'
+    else if (severity === 2) key = 'medium'
+    else key = 'low'
+  } else if (typeof severity === 'string') {
+    key = severity.toLowerCase()
+  }
+
+  const config = SEVERITY_CONFIG[key] || SEVERITY_CONFIG.low
   const isLarge = size === 'lg'
 
   return (
@@ -43,7 +53,7 @@ export default function SeverityBadge({ severity, size = 'sm', showDot = true })
       `}
     >
       {showDot && (
-        <span className={`w-1.5 h-1.5 rounded-full ${config.dot} ${severity === 'critical' ? 'animate-pulse' : ''}`} />
+        <span className={`w-1.5 h-1.5 rounded-full ${config.dot} ${key === 'critical' ? 'animate-pulse' : ''}`} />
       )}
       {config.label}
     </span>
