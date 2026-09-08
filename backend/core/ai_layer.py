@@ -140,7 +140,7 @@ foreach ($proc in $suspiciousProcesses) {{
 Write-Host "[*] Step 4: Capturing memory and active socket evidence..."
 netstat -ano > "C:\\ProgramData\\Sentry\\evidence_{incident_id}_sockets.txt"
 
-Write-Host "[✓] Host {host} successfully contained under Incident {incident_id}." -ForegroundColor Green
+Write-Host "[OK] Host {host} successfully contained under Incident {incident_id}." -ForegroundColor Green
 """
         else:
             script = f"""#!/bin/bash
@@ -172,7 +172,7 @@ pkill -9 -u {user} || true
 echo "[*] Step 3: Logging socket connections..."
 ss -tunap > /tmp/sentry_{incident_id}_sockets.log
 
-echo "[✓] Linux Host {host} network quarantine active."
+echo "[OK] Linux Host {host} network quarantine active."
 """
 
         return {
