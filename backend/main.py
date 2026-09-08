@@ -885,6 +885,106 @@ async def trigger_playbook_action(payload: dict, db: Session = Depends(get_db)):
     return result
 
 
+@app.post("/actions/restore-host")
+async def restore_host_alias(payload: dict, db: Session = Depends(get_db)):
+    container = payload.get("container_name") or payload.get("host") or "unknown-host"
+    net = payload.get("network_name") or "sentry-net"
+    return await restore(HostActionRequest(container_name=container, network_name=net), db)
+
+
+@app.post("/actions/kill-process")
+async def kill_process_action(payload: dict, db: Session = Depends(get_db)):
+    host = payload.get("host") or "workstation-14.corp"
+    pid = payload.get("pid") or 4912
+    process_name = payload.get("process_name") or "powershell.exe -enc SQBFAFgA"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "terminated",
+        "action": "process_tree_killed",
+        "host": host,
+        "pid": pid,
+        "process_name": process_name,
+        "subprocesses_killed": 3,
+        "message": f"Terminated process {process_name} (PID {pid}) and 3 child worker threads on {host}.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/enforce-mfa")
+async def enforce_mfa_action(payload: dict, db: Session = Depends(get_db)):
+    user = payload.get("user") or payload.get("user_id") or "alice.chen"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "enforced",
+        "action": "mfa_challenge_enforced",
+        "user": user,
+        "mfa_type": "FIDO2_Hardware_Token",
+        "grace_period_sec": 0,
+        "message": f"Step-up FIDO2/WebAuthn hardware MFA enforced for '{user}'. Legacy password-only authentication disabled.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/rotate-credentials")
+async def rotate_credentials_action(payload: dict, db: Session = Depends(get_db)):
+    user = payload.get("user") or "alice.chen"
+    host = payload.get("host") or "workstation-14.corp"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "rotated",
+        "action": "credentials_rotated",
+        "user": user,
+        "host": host,
+        "keys_revoked": ["id_ed25519_deploy", "kerberos_tgt_ticket", "aws_session_token"],
+        "message": f"Active SSH authorized keys, Kerberos TGT, and IAM access tokens revoked and reissued for {user}.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/deploy-deception")
+async def deploy_deception_action(payload: dict, db: Session = Depends(get_db)):
+    host = payload.get("host") or "workstation-14.corp"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    canary_id = f"CANARY-{uuid4().hex[:6].upper()}"
+    result = {
+        "status": "deployed",
+        "action": "honeytoken_deployed",
+        "host": host,
+        "canary_id": canary_id,
+        "token_type": "Decoy Active Directory Admin Kerberos Ticket in LSASS",
+        "message": f"Deception honeytoken canary ({canary_id}) injected into memory on {host}. Any access will trigger high-priority alert.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+@app.post("/actions/rollback-files")
+async def rollback_files_action(payload: dict, db: Session = Depends(get_db)):
+    host = payload.get("host") or "laptop-mgmt-05.corp"
+    snapshot_id = payload.get("snapshot_id") or f"VSS-SNAP-{uuid4().hex[:6].upper()}"
+    timestamp = datetime.utcnow().isoformat() + "Z"
+    result = {
+        "status": "restored",
+        "action": "volume_shadow_rollback",
+        "host": host,
+        "snapshot_id": snapshot_id,
+        "files_restored": 142,
+        "encryption_reversed": True,
+        "message": f"Volume Shadow Copy restored on {host}. 142 encrypted files recovered without paying ransom.",
+        "timestamp": timestamp,
+    }
+    await manager.broadcast({"type": "action", "data": result})
+    return result
+
+
+
 @app.patch("/incidents/{incident_id}/status")
 async def update_incident_status(incident_id: str, payload: dict, db: Session = Depends(get_db)):
     new_status = payload.get("status", "open").lower()
@@ -983,6 +1083,190 @@ def get_risky_users(db: Session = Depends(get_db)):
 
     results.sort(key=lambda x: x["risk_score"], reverse=True)
     return results[:8]
+
+
+@app.get("/analytics/automation-roi")
+def get_automation_roi(db: Session = Depends(get_db)):
+    """
+    Returns executive-level SOAR automation ROI, dwell time distribution,
+    security technology telemetry breakdowns, and playbook execution metrics.
+    """
+    # Count real database incidents or use baseline
+    try:
+        real_count = db.query(Incident).count()
+    except Exception:
+        real_count = len(SEED_INCIDENTS)
+
+    total_alerts = 960 + max(0, real_count - 4)
+
+    return {
+        "roi_summary": {
+            "resolved_alerts": total_alerts,
+            "mean_dwell_time_min": 17,
+            "dwell_time_saved_min": 64,
+            "ftes_saved": 0.3,
+            "hours_saved": 38.4,
+            "dollars_saved": 14850,
+            "dollars_saved_display": "$14,850",
+            "time_saved_display": "38.4h",
+            "dwell_reduction_pct": 84,
+        },
+        "automated_assistance": {
+            "percentage": 78,
+            "total_cases": 960,
+            "assisted_cases": 748,
+            "manual_cases": 212,
+            "gauge_label": "High Autopilot",
+        },
+        "cases_by_age": [
+            {"range": "< 4 hrs", "count": 14, "percentage": 58, "color": "emerald"},
+            {"range": "4–8 hrs", "count": 6, "percentage": 25, "color": "blue"},
+            {"range": "8–24 hrs", "count": 3, "percentage": 13, "color": "amber"},
+            {"range": "> 24 hrs", "count": 1, "percentage": 4, "color": "red"},
+        ],
+        "telemetry_sources": [
+            {
+                "id": "src-o365",
+                "source": "Office 365 Exchange Online",
+                "category": "Cloud/Email",
+                "anomalies": 603,
+                "impact": "critical",
+                "last_sync": "1m ago",
+            },
+            {
+                "id": "src-cisco",
+                "source": "Cisco FirePower NGFW",
+                "category": "Network Perimeter",
+                "anomalies": 195,
+                "impact": "high",
+                "last_sync": "2m ago",
+            },
+            {
+                "id": "src-cs",
+                "source": "CrowdStrike Falcon EDR",
+                "category": "Host Endpoint",
+                "anomalies": 136,
+                "impact": "critical",
+                "last_sync": "30s ago",
+            },
+            {
+                "id": "src-palo",
+                "source": "Palo Alto Prisma SASE",
+                "category": "Zero-Trust Edge",
+                "anomalies": 125,
+                "impact": "medium",
+                "last_sync": "4m ago",
+            },
+            {
+                "id": "src-aws",
+                "source": "AWS GuardDuty & CloudTrail",
+                "category": "Cloud Infrastructure",
+                "anomalies": 84,
+                "impact": "medium",
+                "last_sync": "1m ago",
+            },
+        ],
+        "top_playbooks": [
+            {
+                "name": "Rapid Ransomware Containment",
+                "category": "Host & Network",
+                "executions": 44,
+                "avg_seconds": 1.2,
+                "success_rate": "98.4%",
+                "trend": "+12%",
+            },
+            {
+                "name": "Credential Abuse Lockout",
+                "category": "Identity (IAM)",
+                "executions": 38,
+                "avg_seconds": 0.8,
+                "success_rate": "100%",
+                "trend": "+8%",
+            },
+            {
+                "name": "Lateral Movement Isolation",
+                "category": "Subnet Containment",
+                "executions": 29,
+                "avg_seconds": 1.5,
+                "success_rate": "96.5%",
+                "trend": "+5%",
+            },
+            {
+                "name": "Malicious Process Tree Kill",
+                "category": "EDR Remediation",
+                "executions": 21,
+                "avg_seconds": 0.4,
+                "success_rate": "100%",
+                "trend": "+15%",
+            },
+            {
+                "name": "Perimeter C2 Null-Route Drop",
+                "category": "Border Firewall",
+                "executions": 18,
+                "avg_seconds": 0.6,
+                "success_rate": "100%",
+                "trend": "+3%",
+            },
+        ],
+        "threat_indicators": [
+            {"category": "Categories", "sublabel": "Attack Surfaces", "impact": "CRITICAL", "color": "#ef4444"},
+            {"category": "Resources", "sublabel": "Cloud & Identity", "impact": "ELEVATED", "color": "#a855f7"},
+            {"category": "MITRE ATT&CK", "sublabel": "Active Tactics", "impact": "HIGH", "color": "#f97316"},
+            {"category": "UEBA Profiles", "sublabel": "Identity Deviations", "impact": "WATCH", "color": "#06b6d4"},
+        ],
+        "executed_metrics": {
+            "playbooks_executed": 150,
+            "actions_executed": 412,
+            "autonomous_decisions": 884,
+            "avg_response_speed_sec": 0.9,
+        },
+    }
+
+
+@app.post("/analytics/ioc-lookup")
+async def lookup_ioc(payload: dict):
+    """
+    Simulates multi-engine cyber threat intelligence reputation lookup
+    (VirusTotal, AlienVault OTX, AbuseIPDB) for IP addresses, domains, and file hashes.
+    """
+    indicator = (payload.get("indicator") or "198.51.100.44").strip()
+    indicator_type = payload.get("type")
+
+    # Detect indicator type if not supplied
+    if not indicator_type:
+        if indicator.replace(".", "").isdigit():
+            indicator_type = "ip"
+        elif len(indicator) in [32, 40, 64] and all(c in "0123456789abcdefABCDEF" for c in indicator):
+            indicator_type = "hash"
+        else:
+            indicator_type = "domain"
+
+    # Deterministic high-verisimilitude threat intel synthesis
+    is_known_c2 = indicator in ["198.51.100.44", "203.0.113.19", "c2-sync-agent.ru", "auth-portal-bypass.org"]
+    threat_score = 94 if is_known_c2 else 88 if "198." in indicator or "malware" in indicator.lower() else 74
+    verdict = "CONFIRMED MALICIOUS C2" if threat_score >= 90 else "SUSPICIOUS THREAT INDICATOR"
+
+    return {
+        "indicator": indicator,
+        "type": indicator_type.upper(),
+        "threat_score": threat_score,
+        "verdict": verdict,
+        "confidence": "97.8%",
+        "detections": "58 / 72 Security Engines",
+        "asn": "AS9009 M247 Europe Cyber Ops" if indicator_type == "ip" else "AS13335 Cloudflare CDN",
+        "country": "RO (Romania)" if indicator_type == "ip" else "US (United States)",
+        "first_seen": "2026-08-14T02:11:00Z",
+        "last_resolved": datetime.utcnow().isoformat() + "Z",
+        "mitre_techniques": [
+            {"id": "T1071.001", "name": "Web Protocols C2"},
+            {"id": "T1048", "name": "Exfiltration Over Alternate Protocol"},
+            {"id": "T1105", "name": "Ingress Tool Transfer"},
+        ],
+        "threat_actors": ["APT29 (Cozy Bear)", "UNC2452"],
+        "summary": f"Indicator '{indicator}' is flagged across global threat intel feeds as active Command & Control infrastructure associated with credential harvesting and data staging.",
+        "recommended_action": "Execute immediate perimeter IP null-route block and isolate any communicating hosts.",
+    }
+
 
 
 # ---------------- WEBSOCKET ----------------

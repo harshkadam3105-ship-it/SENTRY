@@ -261,6 +261,127 @@ export async function updateIncidentStatus(incidentId, status) {
 }
 
 /**
+ * Restore network connectivity for an isolated host.
+ */
+export async function restoreHost(host, network = 'sentry-net') {
+  const response = await fetch(`${API_BASE}/actions/restore-host`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host, container_name: host, network_name: network }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to restore host: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Terminate malicious process tree on target endpoint.
+ */
+export async function killProcess(host, pid = 4912, processName = 'powershell.exe') {
+  const response = await fetch(`${API_BASE}/actions/kill-process`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host, pid, process_name: processName }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to kill process: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Enforce step-up FIDO2 / hardware MFA on compromised identity.
+ */
+export async function enforceMfa(user) {
+  const response = await fetch(`${API_BASE}/actions/enforce-mfa`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user, user_id: user }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to enforce MFA: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Rotate SSH authorized keys, Kerberos tickets, and IAM passwords.
+ */
+export async function rotateCredentials(user, host) {
+  const response = await fetch(`${API_BASE}/actions/rotate-credentials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user, host }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to rotate credentials: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Deploy decoy canary tokens in memory or filesystem.
+ */
+export async function deployDeception(host) {
+  const response = await fetch(`${API_BASE}/actions/deploy-deception`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to deploy deception honeytoken: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Rollback Volume Shadow Copies / snapshot after ransomware encryption.
+ */
+export async function rollbackFiles(host, snapshotId) {
+  const response = await fetch(`${API_BASE}/actions/rollback-files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host, snapshot_id: snapshotId }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to rollback files: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Fetch CISO executive SOAR automation ROI, dwell time distributions, and telemetry sources.
+ */
+export async function getAutomationRoi() {
+  try {
+    const response = await fetch(`${API_BASE}/analytics/automation-roi`)
+    if (response.ok) {
+      return await response.json()
+    }
+  } catch (err) {
+    console.warn('[API] Could not fetch automation ROI from backend:', err)
+  }
+  return null
+}
+
+/**
+ * Query multi-engine threat intelligence for an indicator (IP, domain, hash).
+ */
+export async function lookupIoc(indicator, type) {
+  const response = await fetch(`${API_BASE}/analytics/ioc-lookup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ indicator, type }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to lookup IOC: ${response.status}`)
+  }
+  return response.json()
+}
+
+
+/**
  * Fetch risky users and UEBA analytics data.
  */
 export async function getRiskyUsers() {

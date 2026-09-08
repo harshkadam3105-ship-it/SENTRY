@@ -4,11 +4,13 @@ import SeverityBadge from '../components/SeverityBadge'
 import RiskScoreBreakdown from '../components/RiskScoreBreakdown'
 import EvidenceTimeline from '../components/EvidenceTimeline'
 import RemediationConsole from '../components/RemediationConsole'
+import BlastRadiusGraph from '../components/BlastRadiusGraph'
 import {
   getIncidentById,
   downloadIncidentDossier,
   getIncidentAiAnalysis,
 } from '../api/incidents'
+
 
 /**
  * IncidentDetail — Tier-2 SOC Analyst Investigation Console.
@@ -286,7 +288,10 @@ export default function IncidentDetail() {
           </div>
         </div>
 
-        {/* 2. What Happened & Detection Reason */}
+        {/* 2. Interactive Attack Vector Topology & Blast Radius Graph */}
+        <BlastRadiusGraph incident={incident} />
+
+        {/* 3. What Happened & Detection Reason */}
         <div className="soc-panel p-4 space-y-3">
           <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
             <div className="p-1 rounded bg-slate-850 border border-slate-800 text-slate-400">

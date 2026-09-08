@@ -8,6 +8,8 @@ import SeverityDonutChart from '../components/SeverityDonutChart'
 import RiskyUsersPanel from '../components/RiskyUsersPanel'
 import ConnectedDevicesPanel from '../components/ConnectedDevicesPanel'
 import EventInjectorModal from '../components/EventInjectorModal'
+import SoarRoiDashboard from '../components/SoarRoiDashboard'
+import IocLookupModal from '../components/IocLookupModal'
 import { getIncidents } from '../api/incidents'
 import { createIncidentSocket } from '../ws/incidentSocket'
 
@@ -25,7 +27,10 @@ export default function SOCOverview() {
   const [streamedEvents, setStreamedEvents] = useState([])
   const [rightPanelTab, setRightPanelTab] = useState('feed') // 'feed' | 'ueba' | 'devices'
   const [isInjectorOpen, setIsInjectorOpen] = useState(false)
+  const [viewMode, setViewMode] = useState('operations') // 'operations' | 'executive'
+  const [isIocModalOpen, setIsIocModalOpen] = useState(false)
   const socketRef = useRef(null)
+
 
   // Load initial incidents from backend
   useEffect(() => {
@@ -137,7 +142,44 @@ export default function SOCOverview() {
           </div>
 
           {/* System Status & Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* View Mode Toggle: Operations vs CISO & ROI */}
+            <div className="flex items-center p-0.5 rounded bg-slate-900 border border-slate-800 text-[11px] font-mono">
+              <button
+                onClick={() => setViewMode('operations')}
+                className={`px-2.5 py-1 rounded transition-colors ${
+                  viewMode === 'operations'
+                    ? 'bg-slate-800 text-slate-100 font-semibold shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Operations
+              </button>
+              <button
+                onClick={() => setViewMode('executive')}
+                className={`px-2.5 py-1 rounded transition-colors ${
+                  viewMode === 'executive'
+                    ? 'bg-slate-800 text-cyan-400 font-semibold shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                CISO & ROI
+              </button>
+            </div>
+
+            {/* IOC Threat Intel Lookup Button */}
+            <button
+              onClick={() => setIsIocModalOpen(true)}
+              className="px-2.5 py-1 text-xs font-mono font-medium rounded bg-slate-850 hover:bg-slate-750 text-slate-200 border border-slate-700 hover:border-slate-600 transition-colors flex items-center gap-1.5"
+              title="Query threat intelligence for IP, domain, or hash"
+            >
+              <svg className="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span className="hidden md:inline">Intel Lookup</span>
+            </button>
+
             {/* Live WebSocket Status indicator */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-[11px] font-mono">
               <span
@@ -149,7 +191,7 @@ export default function SOCOverview() {
                     : 'bg-slate-500'
                 }`}
               />
-              <span className="text-slate-300">
+              <span className="text-slate-300 hidden sm:inline">
                 {wsStatus === 'connected' ? 'Live Stream' : wsStatus === 'connecting' ? 'Connecting' : 'Offline'}
               </span>
             </div>
@@ -163,7 +205,8 @@ export default function SOCOverview() {
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Add Security Event
+              <span className="hidden sm:inline">Add Security Event</span>
+              <span className="sm:hidden">Add Event</span>
             </button>
           </div>
         </div>
@@ -218,8 +261,13 @@ export default function SOCOverview() {
 
       {/* Main Workspace Body */}
       <main className="flex-1 max-w-[1680px] mx-auto w-full p-4 flex flex-col gap-3.5">
-        {/* SOAR Efficiency KPI Bar */}
-        <SoarMetricsBar incidents={incidents} />
+        {viewMode === 'executive' ? (
+          <SoarRoiDashboard />
+        ) : (
+          <>
+            {/* SOAR Efficiency KPI Bar */}
+            <SoarMetricsBar incidents={incidents} />
+
 
         {/* 3. Analyst KPI Row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -386,6 +434,8 @@ export default function SOCOverview() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </main>
 
       {/* Footer */}
@@ -404,6 +454,13 @@ export default function SOCOverview() {
           // Handled via WebSocket broadcast automatically
         }}
       />
+
+      {/* Threat Intel / IOC Lookup Modal */}
+      <IocLookupModal
+        isOpen={isIocModalOpen}
+        onClose={() => setIsIocModalOpen(false)}
+      />
     </div>
   )
 }
+
