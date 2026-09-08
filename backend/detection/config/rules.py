@@ -26,6 +26,7 @@ RULE_CONFIG = {
         "auth_failure_rate_threshold": 0.7,
         "score": 70,
     },
+}
     "privilege_escalation": {
         "score": 85,
     },
