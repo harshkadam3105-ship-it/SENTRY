@@ -169,3 +169,101 @@ export async function isolateHost(host) {
   }
   return response.json()
 }
+
+/**
+ * Revoke user sessions and lock credentials.
+ */
+export async function revokeUser(user, reason = 'Incident containment') {
+  const response = await fetch(`${API_BASE}/actions/revoke-user`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user, reason }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to revoke user session: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Add malicious IP to firewall drop list.
+ */
+export async function blockIp(ip, reason = 'Automated threat containment') {
+  const response = await fetch(`${API_BASE}/actions/block-ip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip, reason }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to block IP: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Capture memory and process triage snapshot for a host.
+ */
+export async function captureForensics(host) {
+  const response = await fetch(`${API_BASE}/actions/capture-forensics`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to capture forensics dump: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Execute a multi-step automated SOAR response playbook.
+ */
+export async function triggerPlaybook(playbook, incidentId, host, user) {
+  const response = await fetch(`${API_BASE}/actions/trigger-playbook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playbook, incident_id: incidentId, host, user }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to execute playbook: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Update incident status (open, investigating, contained, resolved).
+ */
+export async function updateIncidentStatus(incidentId, status) {
+  const response = await fetch(`${API_BASE}/incidents/${incidentId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to update incident status: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Fetch risky users and UEBA analytics data.
+ */
+export async function getRiskyUsers() {
+  try {
+    const response = await fetch(`${API_BASE}/analytics/risky-users`)
+    if (response.ok) {
+      return await response.json()
+    }
+  } catch (err) {
+    console.warn('[API] Could not fetch risky users from backend, using fallback:', err)
+  }
+  return [
+    { user: 'eve.patel', department: 'Finance Admin', host: 'laptop-mgmt-05.corp', risk_score: 97, anomalies_count: 8, severity: 'critical', trend: [45, 62, 74, 88, 97], last_active: '5m ago' },
+    { user: 'alice.chen', department: 'DevOps Engineering', host: 'workstation-14.corp', risk_score: 94, anomalies_count: 6, severity: 'critical', trend: [20, 42, 60, 81, 94], last_active: '14m ago' },
+    { user: 'svc_account', department: 'Cloud Principal', host: 'server-api-01.corp', risk_score: 82, anomalies_count: 5, severity: 'high', trend: [15, 30, 50, 68, 82], last_active: '22m ago' },
+    { user: 'svc_backup', department: 'Storage Infra', host: 'srv-finance-02', risk_score: 78, anomalies_count: 4, severity: 'high', trend: [30, 48, 55, 67, 78], last_active: '40m ago' },
+    { user: 'bob.miller', department: 'Core Platform', host: 'dev-box-03', risk_score: 55, anomalies_count: 3, severity: 'medium', trend: [25, 35, 42, 49, 55], last_active: '1h ago' },
+    { user: 'frank.wu', department: 'Operations', host: 'server-file-03.corp', risk_score: 44, anomalies_count: 2, severity: 'medium', trend: [12, 18, 28, 38, 44], last_active: '2h ago' },
+  ]
+}
+

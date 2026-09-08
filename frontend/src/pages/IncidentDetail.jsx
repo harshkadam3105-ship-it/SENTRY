@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import SeverityBadge from '../components/SeverityBadge'
 import RiskScoreBreakdown from '../components/RiskScoreBreakdown'
 import EvidenceTimeline from '../components/EvidenceTimeline'
+import RemediationConsole from '../components/RemediationConsole'
 import { getIncidentById, isolateHost } from '../api/incidents'
 
 /**
@@ -78,6 +79,16 @@ export default function IncidentDetail() {
     } catch {
       setIsolateState('error')
     }
+  }
+
+  function handleExportDossier() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(incident, null, 2))
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.setAttribute("href", dataStr)
+    downloadAnchor.setAttribute("download", `Sentry_Incident_${incident.incident_id}_Dossier.json`)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
   }
 
   if (loading) {
@@ -168,7 +179,7 @@ export default function IncidentDetail() {
               </div>
             </div>
 
-            {/* Risk score + Isolate button */}
+            {/* Risk score + Quick Actions */}
             <div className="flex items-center gap-6 lg:flex-col lg:items-end">
               <div className="text-center">
                 <div className="text-xs text-slate-500 mb-1">Risk Score</div>
@@ -177,28 +188,17 @@ export default function IncidentDetail() {
               </div>
 
               <button
-                onClick={handleIsolate}
-                disabled={isolateState !== 'idle'}
-                className={`
-                  px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200
-                  ${isolateState === 'done'
-                    ? 'bg-green-900/40 text-green-400 border border-green-500/30 cursor-default'
-                    : isolateState === 'error'
-                    ? 'bg-red-900/40 text-red-400 border border-red-500/30 cursor-default'
-                    : isolateState === 'loading'
-                    ? 'bg-orange-900/40 text-orange-400 border border-orange-500/30 cursor-wait animate-pulse'
-                    : 'bg-red-950/60 text-red-300 border border-red-500/40 hover:bg-red-950 hover:border-red-400/60 hover:text-red-200 active:scale-95'
-                  }
-                `}
+                onClick={handleExportDossier}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-surface-700/60 hover:bg-surface-700 hover:text-white border border-white/10 transition-colors flex items-center gap-1.5 shadow-sm"
               >
-                {isolateState === 'done' ? '✓ Host Isolated' :
-                 isolateState === 'error' ? '✗ Isolate Failed' :
-                 isolateState === 'loading' ? 'Isolating…' :
-                 '🔒 Isolate Host'}
+                <span>📥</span> Export Dossier (JSON)
               </button>
             </div>
           </div>
         </div>
+
+        {/* SOAR Remediation & Response Playbook Console */}
+        <RemediationConsole incident={incident} onIncidentUpdate={setIncident} />
 
         {/* Why flagged — explanation + MITRE */}
         <div className="glass-card p-5 space-y-4">

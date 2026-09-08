@@ -2,12 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import StatCard from '../components/StatCard'
 import IncidentTable from '../components/IncidentTable'
 import LiveFeedPanel from '../components/LiveFeedPanel'
+import SoarMetricsBar from '../components/SoarMetricsBar'
+import AttackTrendChart from '../components/AttackTrendChart'
+import SeverityDonutChart from '../components/SeverityDonutChart'
+import RiskyUsersPanel from '../components/RiskyUsersPanel'
 import { getIncidents } from '../api/incidents'
 import { createIncidentSocket } from '../ws/incidentSocket'
 
 /**
  * SOCOverview — main dashboard page
- * Shows stat cards, incident table, and live event feed.
+ * Shows stat cards, incident table, live event feed, and enterprise SOAR analytics.
  */
 
 export default function SOCOverview() {
@@ -17,6 +21,7 @@ export default function SOCOverview() {
   const [wsStatus, setWsStatus] = useState('disconnected')
   const [newIds, setNewIds] = useState(new Set())
   const [streamedEvents, setStreamedEvents] = useState([])
+  const [rightPanelTab, setRightPanelTab] = useState('feed') // 'feed' | 'ueba'
   const socketRef = useRef(null)
 
   // Load initial incidents
@@ -133,6 +138,9 @@ export default function SOCOverview() {
           )}
         </div>
 
+        {/* SOAR Performance & Automation KPI Bar */}
+        <SoarMetricsBar incidents={incidents} />
+
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -166,8 +174,14 @@ export default function SOCOverview() {
           />
         </div>
 
-        {/* Main content: table + live feed */}
-        <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4" style={{ minHeight: 0 }}>
+        {/* Visual Analytics Row: 24h Attack Flow + Severity Donut */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+          <AttackTrendChart incidents={incidents} />
+          <SeverityDonutChart incidents={incidents} />
+        </div>
+
+        {/* Main content: table + tabbed right column (Live Feed / UEBA Risky Users) */}
+        <div className="flex-1 grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4" style={{ minHeight: 0 }}>
           {/* Incident table */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -196,11 +210,36 @@ export default function SOCOverview() {
             )}
           </div>
 
-          {/* Live feed */}
-          <div className="flex flex-col gap-3" style={{ maxHeight: '70vh' }}>
-            <h2 className="text-sm font-semibold text-slate-300">Real-Time Feed</h2>
-            <div className="flex-1" style={{ minHeight: 0, maxHeight: '60vh' }}>
-              <LiveFeedPanel incidents={incidents} streamedEvents={streamedEvents} wsStatus={wsStatus} />
+          {/* Right column: Tabbed between Live Feed and Risky Users (UEBA) */}
+          <div className="flex flex-col gap-3" style={{ maxHeight: '78vh' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1 bg-surface-800 p-0.5 rounded-lg border border-white/5 text-xs">
+                <button
+                  onClick={() => setRightPanelTab('feed')}
+                  className={`px-3 py-1 rounded transition-colors font-medium flex items-center gap-1.5 ${
+                    rightPanelTab === 'feed' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  Live Event Feed
+                </button>
+                <button
+                  onClick={() => setRightPanelTab('ueba')}
+                  className={`px-3 py-1 rounded transition-colors font-medium flex items-center gap-1.5 ${
+                    rightPanelTab === 'ueba' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>👤</span> Risky Users
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1" style={{ minHeight: 0, maxHeight: '68vh' }}>
+              {rightPanelTab === 'feed' ? (
+                <LiveFeedPanel incidents={incidents} streamedEvents={streamedEvents} wsStatus={wsStatus} />
+              ) : (
+                <RiskyUsersPanel />
+              )}
             </div>
           </div>
         </div>
