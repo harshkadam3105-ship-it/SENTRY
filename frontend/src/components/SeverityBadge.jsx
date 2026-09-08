@@ -1,31 +1,28 @@
 /**
- * SeverityBadge — pill badge for incident severity levels
+ * SeverityBadge — Restrained enterprise severity indicator badge.
+ * Compact pill with subtle solid tint, clean 1px border, and optional status dot.
  */
 
 const SEVERITY_CONFIG = {
   critical: {
     label: 'CRITICAL',
-    className: 'badge-critical',
-    dot: 'bg-red-400',
-    glow: 'shadow-red-500/30',
+    className: 'bg-red-950/40 text-red-400 border border-red-500/30',
+    dot: 'bg-red-500',
   },
   high: {
     label: 'HIGH',
-    className: 'badge-high',
-    dot: 'bg-orange-400',
-    glow: 'shadow-orange-500/30',
+    className: 'bg-orange-950/40 text-orange-400 border border-orange-500/30',
+    dot: 'bg-orange-500',
   },
   medium: {
     label: 'MEDIUM',
-    className: 'badge-medium',
-    dot: 'bg-yellow-400',
-    glow: 'shadow-yellow-500/30',
+    className: 'bg-amber-950/30 text-amber-400 border border-amber-500/30',
+    dot: 'bg-amber-400',
   },
   low: {
     label: 'LOW',
-    className: 'badge-low',
-    dot: 'bg-slate-400',
-    glow: '',
+    className: 'bg-slate-800/60 text-slate-400 border border-slate-700/50',
+    dot: 'bg-slate-500',
   },
 }
 
@@ -46,14 +43,17 @@ export default function SeverityBadge({ severity, size = 'sm', showDot = true })
   return (
     <span
       className={`
-        inline-flex items-center gap-1.5
+        inline-flex items-center gap-1.5 font-semibold font-mono uppercase tracking-wider rounded
+        ${isLarge ? 'px-2.5 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]'}
         ${config.className}
-        ${isLarge ? 'px-3 py-1 text-sm' : ''}
-        ${config.glow ? `shadow-md ${config.glow}` : ''}
       `}
     >
       {showDot && (
-        <span className={`w-1.5 h-1.5 rounded-full ${config.dot} ${key === 'critical' ? 'animate-pulse' : ''}`} />
+        <span
+          className={`rounded-full shrink-0 ${isLarge ? 'w-2 h-2' : 'w-1.5 h-1.5'} ${config.dot} ${
+            key === 'critical' ? 'animate-pulse' : ''
+          }`}
+        />
       )}
       {config.label}
     </span>

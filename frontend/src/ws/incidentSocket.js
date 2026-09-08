@@ -16,7 +16,10 @@
 
 import { normalizeIncident } from '../api/incidents'
 
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+const defaultWsBase = typeof window !== 'undefined'
+  ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8000`
+  : 'ws://localhost:8000'
+const WS_BASE = import.meta.env.VITE_WS_URL || defaultWsBase
 const WS_PATHS = ['/ws/incidents', '/ws']
 
 const BACKOFF_DELAYS = [1000, 2000, 4000, 8000, 15000, 30000]
