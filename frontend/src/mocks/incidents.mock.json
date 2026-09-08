@@ -1,0 +1,198 @@
+[
+  {
+    "incident_id": "INC-001",
+    "created_at": "2026-09-08T06:12:34Z",
+    "host": "workstation-14.corp",
+    "user": "alice.chen",
+    "severity": "critical",
+    "risk_score": 0.94,
+    "mitre_techniques": ["T1110", "T1078", "T1021"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-001a",
+        "type": "auth_failure",
+        "timestamp": "2026-09-08T06:10:11Z",
+        "anomaly_score": 0.87,
+        "rule_score": 0.95,
+        "detail": "52 failed SSH login attempts from 192.168.1.105 over 90 seconds"
+      },
+      {
+        "event_id": "EVT-001b",
+        "type": "lateral_movement",
+        "timestamp": "2026-09-08T06:12:05Z",
+        "anomaly_score": 0.91,
+        "rule_score": 0.89,
+        "detail": "RDP session initiated to domain controller dc-01.corp from newly authenticated account"
+      },
+      {
+        "event_id": "EVT-001c",
+        "type": "privilege_escalation",
+        "timestamp": "2026-09-08T06:13:22Z",
+        "anomaly_score": 0.96,
+        "rule_score": 0.92,
+        "detail": "Token impersonation detected; attacker account added to local Administrators group"
+      }
+    ],
+    "explanation": "Brute-force credential attack succeeded on workstation-14. Attacker pivoted laterally via RDP within 2 minutes and escalated privileges. High confidence based on velocity of failed auths followed by immediate lateral movement."
+  },
+  {
+    "incident_id": "INC-002",
+    "created_at": "2026-09-08T07:45:00Z",
+    "host": "server-db-02.corp",
+    "user": "bob.martinez",
+    "severity": "high",
+    "risk_score": 0.78,
+    "mitre_techniques": ["T1048", "T1567"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-002a",
+        "type": "data_exfiltration",
+        "timestamp": "2026-09-08T07:43:00Z",
+        "anomaly_score": 0.82,
+        "rule_score": 0.74,
+        "detail": "Unusual outbound DNS traffic: 4.2 GB to external resolver 8.8.8.8 over 12 minutes"
+      },
+      {
+        "event_id": "EVT-002b",
+        "type": "command_and_control",
+        "timestamp": "2026-09-08T07:41:10Z",
+        "anomaly_score": 0.79,
+        "rule_score": 0.81,
+        "detail": "Outbound HTTPS connections to 3 previously unseen domains within 5 minutes"
+      }
+    ],
+    "explanation": "Large-volume DNS tunneling detected originating from the database server. Data volume (4.2 GB) far exceeds normal DNS activity; pattern consistent with staged exfiltration via DNS over HTTPS."
+  },
+  {
+    "incident_id": "INC-003",
+    "created_at": "2026-09-08T08:22:15Z",
+    "host": "laptop-dev-07.corp",
+    "user": "carol.jones",
+    "severity": "medium",
+    "risk_score": 0.51,
+    "mitre_techniques": ["T1059"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-003a",
+        "type": "suspicious_process",
+        "timestamp": "2026-09-08T08:21:00Z",
+        "anomaly_score": 0.55,
+        "rule_score": 0.48,
+        "detail": "PowerShell.exe with -EncodedCommand flag spawned by outlook.exe — possible macro payload"
+      }
+    ],
+    "explanation": "Encoded PowerShell script executed from Outlook process context, consistent with phishing macro delivery. User has no prior PowerShell activity in 30-day baseline."
+  },
+  {
+    "incident_id": "INC-004",
+    "created_at": "2026-09-08T09:05:50Z",
+    "host": "server-api-01.corp",
+    "user": "svc_account",
+    "severity": "high",
+    "risk_score": 0.82,
+    "mitre_techniques": ["T1136", "T1059", "T1098"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-004a",
+        "type": "account_creation",
+        "timestamp": "2026-09-08T09:03:00Z",
+        "anomaly_score": 0.88,
+        "rule_score": 0.76,
+        "detail": "New service account 'svc_monitor2' created outside provisioning hours (03:00 UTC)"
+      },
+      {
+        "event_id": "EVT-004b",
+        "type": "persistence",
+        "timestamp": "2026-09-08T09:04:30Z",
+        "anomaly_score": 0.85,
+        "rule_score": 0.79,
+        "detail": "Scheduled task registered: runs encoded PowerShell at system startup"
+      }
+    ],
+    "explanation": "Unauthorized service account creation at 03:00 UTC followed by scheduled task persistence mechanism. Pattern strongly suggests attacker establishing long-term access foothold."
+  },
+  {
+    "incident_id": "INC-005",
+    "created_at": "2026-09-08T10:34:00Z",
+    "host": "workstation-31.corp",
+    "user": "dave.kim",
+    "severity": "low",
+    "risk_score": 0.23,
+    "mitre_techniques": ["T1071"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-005a",
+        "type": "network_anomaly",
+        "timestamp": "2026-09-08T10:32:00Z",
+        "anomaly_score": 0.28,
+        "rule_score": 0.19,
+        "detail": "Outbound connection on port 8443 to IP not in corporate egress allowlist"
+      }
+    ],
+    "explanation": "Single outbound connection to an unrecognized IP on a non-standard port. Could be legitimate tool or minor policy violation. Flagged for review; low confidence of malicious intent."
+  },
+  {
+    "incident_id": "INC-006",
+    "created_at": "2026-09-08T11:18:42Z",
+    "host": "laptop-mgmt-05.corp",
+    "user": "eve.patel",
+    "severity": "critical",
+    "risk_score": 0.97,
+    "mitre_techniques": ["T1003", "T1021", "T1078", "T1110"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-006a",
+        "type": "credential_dump",
+        "timestamp": "2026-09-08T11:15:00Z",
+        "anomaly_score": 0.99,
+        "rule_score": 0.98,
+        "detail": "LSASS memory access by non-system process — credential dumping detected (Mimikatz signature)"
+      },
+      {
+        "event_id": "EVT-006b",
+        "type": "lateral_movement",
+        "timestamp": "2026-09-08T11:16:30Z",
+        "anomaly_score": 0.95,
+        "rule_score": 0.91,
+        "detail": "Pass-the-hash lateral movement to 7 hosts in 90 seconds using dumped NTLM hashes"
+      },
+      {
+        "event_id": "EVT-006c",
+        "type": "ransomware_indicator",
+        "timestamp": "2026-09-08T11:18:00Z",
+        "anomaly_score": 0.97,
+        "rule_score": 0.96,
+        "detail": "Mass file encryption activity detected: 3,400 files modified with .locked extension"
+      }
+    ],
+    "explanation": "CRITICAL: Active ransomware deployment in progress. Credential dumping via LSASS followed by rapid pass-the-hash propagation to 7 hosts. File encryption has begun. IMMEDIATE ISOLATION REQUIRED."
+  },
+  {
+    "incident_id": "INC-007",
+    "created_at": "2026-09-08T12:01:11Z",
+    "host": "server-file-03.corp",
+    "user": "frank.wu",
+    "severity": "medium",
+    "risk_score": 0.44,
+    "mitre_techniques": ["T1083", "T1005"],
+    "correlated_events": [
+      {
+        "event_id": "EVT-007a",
+        "type": "file_discovery",
+        "timestamp": "2026-09-08T11:59:00Z",
+        "anomaly_score": 0.47,
+        "rule_score": 0.41,
+        "detail": "Recursive directory enumeration of /finance and /hr shares — 12,000 files indexed in 3 minutes"
+      },
+      {
+        "event_id": "EVT-007b",
+        "type": "data_collection",
+        "timestamp": "2026-09-08T12:00:20Z",
+        "anomaly_score": 0.45,
+        "rule_score": 0.43,
+        "detail": "Bulk copy of 850 MB from shared drive to local temp directory"
+      }
+    ],
+    "explanation": "Unusual file discovery and bulk staging of sensitive HR and finance documents. Activity pattern consistent with insider reconnaissance prior to exfiltration. No external connections observed yet."
+  }
+]
